@@ -11,7 +11,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -38,13 +37,15 @@ public class Main {
         InputStream inputReader = System.in;
 
         while (true) {
-            System.out.print("$ ");
-            System.out.flush();
-
-            StringBuilder inputBuilder = new StringBuilder();
-            resetTabState();
-
             try {
+                reapCompletedJobs(System.out);
+
+                System.out.print("$ ");
+                System.out.flush();
+
+                StringBuilder inputBuilder = new StringBuilder();
+                resetTabState();
+
                 while (true) {
                     int code = inputReader.read();
 
@@ -513,43 +514,37 @@ public class Main {
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
-        List<BackgroundJob> doneJobs = new ArrayList<>();
+        reapCompletedJobs(out);
 
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
-
-            if (!job.process.isAlive()) {
-                try {
-                    job.process.exitValue();
-                    job.status = "Done";
-                } catch (IllegalThreadStateException ignored) {
-                    job.status = "Running";
-                }
-            } else {
-                job.status = "Running";
-            }
-
             String marker = getJobMarker(i);
-            String statusField = String.format("%-24s", job.status);
-            String commandToShow = "Done".equals(job.status)
-                    ? removeTrailingAmpersand(job.commandLine)
-                    : job.commandLine;
-
-            out.println("[" + job.jobNumber + "] " + marker + " " + statusField + commandToShow);
-
-            if ("Done".equals(job.status)) {
-                doneJobs.add(job);
-            }
-        }
-
-        for (BackgroundJob doneJob : doneJobs) {
-            backgroundJobs.remove(doneJob);
+            String statusField = String.format("%-24s", "Running");
+            out.println("[" + job.jobNumber + "] " + marker + " " + statusField + job.commandLine);
         }
 
         out.flush();
         if (out != System.out) {
             out.close();
         }
+    }
+
+    private static void reapCompletedJobs(PrintStream out) {
+        List<BackgroundJob> doneJobs = new ArrayList<>();
+
+        for (int i = 0; i < backgroundJobs.size(); i++) {
+            BackgroundJob job = backgroundJobs.get(i);
+            if (!job.process.isAlive()) {
+                String marker = getJobMarker(i);
+                String statusField = String.format("%-24s", "Done");
+                String commandToShow = removeTrailingAmpersand(job.commandLine);
+                out.println("[" + job.jobNumber + "] " + marker + " " + statusField + commandToShow);
+                doneJobs.add(job);
+            }
+        }
+
+        backgroundJobs.removeAll(doneJobs);
+        out.flush();
     }
 
     private static String removeTrailingAmpersand(String commandLine) {
