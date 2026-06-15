@@ -80,7 +80,7 @@ public class Main {
                 } else if ("pwd".equals(command)) {
                     executePwd(parsed);
                 } else if ("cd".equals(command)) {
-                    handleCd(parsed.args);
+                    executeCd(parsed);
                 } else if ("type".equals(command)) {
                     executeType(parsed);
                 } else {
@@ -163,7 +163,9 @@ public class Main {
     }
 
     private static void executeEcho(ParsedCommand parsed) throws Exception {
+        ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
+
         for (int i = 1; i < parsed.args.size(); i++) {
             if (i > 1) {
                 out.print(" ");
@@ -172,21 +174,25 @@ public class Main {
         }
         out.println();
         out.flush();
+
         if (out != System.out) {
             out.close();
         }
     }
 
     private static void executePwd(ParsedCommand parsed) throws Exception {
+        ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
         out.println(currentDirectory);
         out.flush();
+
         if (out != System.out) {
             out.close();
         }
     }
 
     private static void executeType(ParsedCommand parsed) throws Exception {
+        ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
         if (parsed.args.size() < 2) {
@@ -215,26 +221,34 @@ public class Main {
         }
     }
 
-    private static void handleCd(List<String> parts) {
-        String target;
-        if (parts.size() < 2 || "~".equals(parts.get(1))) {
-            target = System.getProperty("user.home");
-        } else if (parts.get(1).startsWith("~/")) {
-            target = System.getProperty("user.home") + parts.get(1).substring(1);
-        } else {
-            target = parts.get(1);
-        }
+    private static void executeCd(ParsedCommand parsed) throws Exception {
+        PrintStream err = getStderrStream(parsed);
+        try {
+            String target;
+            if (parsed.args.size() < 2 || "~".equals(parsed.args.get(1))) {
+                target = System.getProperty("user.home");
+            } else if (parsed.args.get(1).startsWith("~/")) {
+                target = System.getProperty("user.home") + parsed.args.get(1).substring(1);
+            } else {
+                target = parsed.args.get(1);
+            }
 
-        Path newPath = Paths.get(target);
-        if (!newPath.isAbsolute()) {
-            newPath = currentDirectory.resolve(newPath);
-        }
-        newPath = newPath.normalize();
+            Path newPath = Paths.get(target);
+            if (!newPath.isAbsolute()) {
+                newPath = currentDirectory.resolve(newPath);
+            }
+            newPath = newPath.normalize();
 
-        if (Files.exists(newPath) && Files.isDirectory(newPath)) {
-            currentDirectory = newPath;
-        } else {
-            System.out.println("cd: " + parts.get(1) + ": No such file or directory");
+            if (Files.exists(newPath) && Files.isDirectory(newPath)) {
+                currentDirectory = newPath;
+            } else {
+                err.println("cd: " + parsed.args.get(1) + ": No such file or directory");
+                err.flush();
+            }
+        } finally {
+            if (err != System.err) {
+                err.close();
+            }
         }
     }
 
@@ -260,7 +274,7 @@ public class Main {
             pb.directory(currentDirectory.toFile());
 
             if (parsed.stdoutFile != null) {
-                File file = resolvePath(parsed.stdoutFile).toFile();
+                File file = prepareFile(parsed.stdoutFile).toFile();
                 pb.redirectOutput(parsed.stdoutAppend
                         ? ProcessBuilder.Redirect.appendTo(file)
                         : ProcessBuilder.Redirect.to(file));
@@ -269,7 +283,7 @@ public class Main {
             }
 
             if (parsed.stderrFile != null) {
-                File file = resolvePath(parsed.stderrFile).toFile();
+                File file = prepareFile(parsed.stderrFile).toFile();
                 pb.redirectError(parsed.stderrAppend
                         ? ProcessBuilder.Redirect.appendTo(file)
                         : ProcessBuilder.Redirect.to(file));
@@ -288,14 +302,38 @@ public class Main {
         if (parsed.stdoutFile == null) {
             return System.out;
         }
+        Path filePath = prepareFile(parsed.stdoutFile);
+        return new PrintStream(new FileOutputStream(filePath.toFile(), parsed.stdoutAppend));
+    }
 
-        Path filePath = resolvePath(parsed.stdoutFile);
+    private static PrintStream getStderrStream(ParsedCommand parsed) throws Exception {
+        if (parsed.stderrFile == null) {
+            return System.err;
+        }
+        Path filePath = prepareFile(parsed.stderrFile);
+        return new PrintStream(new FileOutputStream(filePath.toFile(), parsed.stderrAppend));
+    }
+
+    private static void ensureBuiltinStderrTargetExists(ParsedCommand parsed) throws Exception {
+        if (parsed.stderrFile == null) {
+            return;
+        }
+
+        Path filePath = prepareFile(parsed.stderrFile);
+        FileOutputStream fos = new FileOutputStream(filePath.toFile(), parsed.stderrAppend);
+        fos.close();
+    }
+
+    private static Path prepareFile(String file) throws Exception {
+        Path filePath = resolvePath(file);
         File parent = filePath.toFile().getParentFile();
         if (parent != null) {
             parent.mkdirs();
         }
-
-        return new PrintStream(new FileOutputStream(filePath.toFile(), parsed.stdoutAppend));
+        if (!Files.exists(filePath)) {
+            Files.createFile(filePath);
+        }
+        return filePath;
     }
 
     private static Path resolvePath(String file) {
