@@ -3,8 +3,6 @@ import java.nio.file.*;
 import java.util.*;
 
 public class Main {
-    private static final Set<String> BUILT_INS = Set.of("exit", "echo", "type", "pwd", "cd");
-
     public static void main(String[] args) throws Exception {
         Shell shell = new Shell();
         shell.run();
@@ -12,6 +10,7 @@ public class Main {
 }
 
 class Shell {
+    private static final Set<String> BUILT_INS = Set.of("exit", "echo", "type", "pwd", "cd");
     private Path currentDirectory = Paths.get(System.getProperty("user.dir"));
 
     public void run() throws Exception {
@@ -209,7 +208,7 @@ class Shell {
 
         String target = command.get(1);
 
-        if (Main.BUILT_INS.contains(target)) {
+        if (BUILT_INS.contains(target)) {
             System.out.printf("%s is a shell builtin%n", target);
             return;
         }
@@ -230,24 +229,14 @@ class Shell {
             return;
         }
 
-        Process leftProcess = startExternalProcess(leftCommand, null, true);
-        Process rightProcess = startExternalProcess(rightCommand, leftProcess.getInputStream(), false);
+        Process leftProcess = startExternalProcess(leftCommand, null);
+        Process rightProcess = startExternalProcess(rightCommand, leftProcess.getInputStream());
 
         Thread leftErr = pipeAsync(leftProcess.getErrorStream(), System.err, false);
         Thread rightErr = pipeAsync(rightProcess.getErrorStream(), System.err, false);
         Thread rightOut = pipeAsync(rightProcess.getInputStream(), System.out, false);
 
-        int rightExit = rightProcess.waitFor();
-
-        try {
-            leftProcess.getInputStream().close();
-        } catch (Exception ignored) {
-        }
-
-        try {
-            leftProcess.getOutputStream().close();
-        } catch (Exception ignored) {
-        }
+        rightProcess.waitFor();
 
         try {
             leftProcess.destroy();
@@ -265,7 +254,7 @@ class Shell {
     }
 
     private void executeExternal(List<String> command, InputStream input, OutputStream output) throws Exception {
-        Process process = startExternalProcess(command, input, false);
+        Process process = startExternalProcess(command, input);
 
         Thread errThread = pipeAsync(process.getErrorStream(), System.err, false);
         Thread outThread = pipeAsync(process.getInputStream(), output, false);
@@ -276,7 +265,7 @@ class Shell {
         if (outThread != null) outThread.join();
     }
 
-    private Process startExternalProcess(List<String> command, InputStream input, boolean pipeStdout) throws Exception {
+    private Process startExternalProcess(List<String> command, InputStream input) throws Exception {
         String executable = resolveExecutable(command.get(0));
         if (executable == null) {
             System.out.printf("%s: command not found%n", command.get(0));
