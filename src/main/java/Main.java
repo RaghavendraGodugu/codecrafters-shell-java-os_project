@@ -20,11 +20,10 @@ import java.util.Set;
 public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
     private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type", "complete");
+    private static final Map<String, String> completionSpecs = new LinkedHashMap<>();
 
     private static String lastTabInput = null;
     private static List<String> lastTabDisplayOptions = new ArrayList<>();
-
-    private static final Map<String, String> completionSpecs = new LinkedHashMap<>();
 
     public static void main(String[] args) {
         try {
@@ -121,16 +120,26 @@ public class Main {
                 String scriptPath = completionSpecs.get(commandName);
 
                 if (scriptPath != null) {
-                    String currentWord;
+                    String currentWord = currentInput.endsWith(" ") ? "" : prefix;
+                    String previousWord = "";
+
                     if (currentInput.endsWith(" ")) {
-                        currentWord = "";
+                        if (!args.isEmpty()) {
+                            previousWord = args.get(args.size() - 1);
+                        }
                     } else {
-                        currentWord = prefix;
+                        if (args.size() >= 2) {
+                            previousWord = args.get(args.size() - 2 < 0 ? 0 : args.size() - 2);
+                            if (args.size() == 2) {
+                                previousWord = commandName;
+                            }
+                        }
                     }
 
                     List<String> scriptCandidates = runCompleterScript(
                             scriptPath,
                             currentWord,
+                            previousWord,
                             commandName,
                             currentInput
                     );
@@ -220,13 +229,19 @@ public class Main {
     private static List<String> runCompleterScript(
             String scriptPath,
             String currentWord,
+            String previousWord,
             String commandName,
             String fullCommandLine
     ) {
         List<String> candidates = new ArrayList<>();
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(scriptPath, currentWord, commandName);
+            ProcessBuilder pb = new ProcessBuilder(
+                    scriptPath,
+                    currentWord,
+                    previousWord,
+                    commandName
+            );
             pb.directory(currentDirectory.toFile());
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
 
