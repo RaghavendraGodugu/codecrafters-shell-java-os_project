@@ -104,13 +104,16 @@ public class Main {
         String currentInput = inputBuilder.toString();
         int lastSpace = currentInput.lastIndexOf(' ');
         String prefix = lastSpace == -1 ? currentInput : currentInput.substring(lastSpace + 1);
+        boolean isCommandPosition = lastSpace == -1;
 
         if (prefix.isEmpty()) {
             ringBell();
             return;
         }
 
-        List<String> matches = findMatches(prefix);
+        List<String> matches = isCommandPosition
+                ? findCommandMatches(prefix)
+                : findArgumentMatches(prefix);
 
         if (matches.isEmpty()) {
             ringBell();
@@ -131,13 +134,18 @@ public class Main {
             applyCompletion(inputBuilder, currentInput, lastSpace, prefix, lcp);
             resetTabState();
 
-            List<String> narrowedMatches = findMatches(lcp);
-            if (narrowedMatches.size() == 1 && lcp.equals(narrowedMatches.get(0))) {
-                String updatedInput = inputBuilder.toString();
-                int updatedLastSpace = updatedInput.lastIndexOf(' ');
-                String updatedPrefix = updatedLastSpace == -1
-                        ? updatedInput
-                        : updatedInput.substring(updatedLastSpace + 1);
+            String updatedInput = inputBuilder.toString();
+            int updatedLastSpace = updatedInput.lastIndexOf(' ');
+            String updatedPrefix = updatedLastSpace == -1
+                    ? updatedInput
+                    : updatedInput.substring(updatedLastSpace + 1);
+            boolean updatedCommandPosition = updatedLastSpace == -1;
+
+            List<String> narrowedMatches = updatedCommandPosition
+                    ? findCommandMatches(updatedPrefix)
+                    : findArgumentMatches(updatedPrefix);
+
+            if (narrowedMatches.size() == 1 && updatedPrefix.equals(narrowedMatches.get(0))) {
                 applyCompletion(inputBuilder, updatedInput, updatedLastSpace, updatedPrefix, narrowedMatches.get(0) + " ");
             }
             return;
@@ -205,7 +213,7 @@ public class Main {
         System.out.flush();
     }
 
-    private static List<String> findMatches(String prefix) {
+    private static List<String> findCommandMatches(String prefix) {
         Set<String> matches = new LinkedHashSet<>();
 
         for (String builtin : BUILTINS) {
@@ -232,6 +240,24 @@ public class Main {
                     if (file.isFile() && file.canExecute() && file.getName().startsWith(prefix)) {
                         matches.add(file.getName());
                     }
+                }
+            }
+        }
+
+        List<String> sortedMatches = new ArrayList<>(matches);
+        Collections.sort(sortedMatches);
+        return sortedMatches;
+    }
+
+    private static List<String> findArgumentMatches(String prefix) {
+        Set<String> matches = new LinkedHashSet<>();
+
+        File folder = currentDirectory.toFile();
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.getName().startsWith(prefix)) {
+                    matches.add(file.getName());
                 }
             }
         }
