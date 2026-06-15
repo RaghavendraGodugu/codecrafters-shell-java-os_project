@@ -47,24 +47,31 @@ public class Main {
                 }
             }
 
-            // Save original stdout so we can restore it for the next loop iteration
             PrintStream originalOut = System.out;
             PrintStream fileOutStream = null;
+            File targetFile = null;
 
             if (redirectIndex != -1) {
                 try {
-                    File file = new File(currentDirectory.toFile(), redirectFile);
-                    // Ensure parent directories exist
-                    if (file.getParentFile() != null) {
-                        file.getParentFile().mkdirs();
+                    // FIX: Check if redirectFile is an absolute path or a relative path
+                    if (redirectFile.startsWith("/")) {
+                        targetFile = new File(redirectFile);
+                    } else {
+                        targetFile = new File(currentDirectory.toFile(), redirectFile);
                     }
-                    fileOutStream = new PrintStream(new FileOutputStream(file, false)); // false = overwrite
+
+                    // Ensure parent directories exist
+                    if (targetFile.getParentFile() != null) {
+                        targetFile.getParentFile().mkdirs();
+                    }
+                    
+                    fileOutStream = new PrintStream(new FileOutputStream(targetFile, false)); // overwrite
                     System.setOut(fileOutStream);
                 } catch (IOException e) {
                     System.err.println("Shell error: Redirection target could not be opened.");
                 }
                 
-                // Strip out the redirection operators and filename from the arguments passed to builtins
+                // Strip out the redirection operators and filename from the arguments list
                 argsList = new ArrayList<>(argsList.subList(0, redirectIndex));
             }
 
@@ -142,11 +149,10 @@ public class Main {
                         ProcessBuilder pb = new ProcessBuilder(argsList);
                         pb.directory(currentDirectory.toFile());
                         
-                        if (redirectIndex != -1) {
-                            // Let ProcessBuilder handle file writing redirection internally
-                            File file = new File(currentDirectory.toFile(), redirectFile);
-                            pb.redirectOutput(file);
-                            pb.redirectError(ProcessBuilder.Redirect.INHERIT); // Keep errors on console
+                        if (redirectIndex != -1 && targetFile != null) {
+                            // Pass the properly verified absolute/relative target file object
+                            pb.redirectOutput(targetFile);
+                            pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
                         } else {
                             pb.inheritIO();
                         }
@@ -161,7 +167,6 @@ public class Main {
                 }
             }
 
-            // Cleanup & Restore stream tracking states for our shell interface prompt loop
             if (fileOutStream != null) {
                 fileOutStream.close();
             }
