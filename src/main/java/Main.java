@@ -4,19 +4,23 @@ import java.util.*;
 
 public class Main {
     public static void main(String[] args) throws Exception {
-        Shell shell = new Shell();
-        shell.run();
+        new Shell().run();
     }
 }
 
 class Shell {
     private static final Set<String> BUILT_INS = Set.of("exit", "echo", "type", "pwd", "cd");
+
     private Path currentDirectory = Paths.get(System.getProperty("user.dir"));
+    private final List<BackgroundJob> backgroundJobs = new ArrayList<>();
+    private int nextJobNumber = 1;
 
     public void run() throws Exception {
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
+            reapFinishedJobs();
+
             System.out.print("$ ");
             System.out.flush();
 
@@ -34,7 +38,59 @@ class Shell {
             if (pipelineParts.size() == 2) {
                 executePipeline(pipelineParts.get(0), pipelineParts.get(1));
             } else {
-                executeSingleCommand(parseCommand(input));
+                executeSingleInput(input);
+            }
+        }
+    }
+
+    private void executeSingleInput(String input) throws Exception {
+        List<String> command = parseCommand(input);
+        if (command.isEmpty()) {
+            return;
+        }
+
+        boolean runInBackground = false;
+        if (!command.isEmpty() && "&".equals(command.get(command.size() - 1))) {
+            runInBackground = true;
+            command.remove(command.size() - 1);
+        }
+
+        if (command.isEmpty()) {
+            return;
+        }
+
+        if (runInBackground) {
+            executeBackgroundCommand(command);
+        } else {
+            executeSingleCommand(command);
+        }
+    }
+
+    private void executeBackgroundCommand(List<String> command) throws Exception {
+        String cmd = command.get(0);
+
+        if (BUILT_INS.contains(cmd)) {
+            executeSingleCommand(command);
+            return;
+        }
+
+        Process process = startExternalProcess(command, null);
+
+        BackgroundJob job = new BackgroundJob(nextJobNumber++, process, String.join(" ", command));
+        backgroundJobs.add(job);
+
+        System.out.printf("[%d] %d%n", job.jobNumber, process.pid());
+
+        pipeAsync(process.getInputStream(), System.out, false);
+        pipeAsync(process.getErrorStream(), System.err, false);
+    }
+
+    private void reapFinishedJobs() {
+        Iterator<BackgroundJob> iterator = backgroundJobs.iterator();
+        while (iterator.hasNext()) {
+            BackgroundJob job = iterator.next();
+            if (!job.process.isAlive()) {
+                iterator.remove();
             }
         }
     }
@@ -351,5 +407,17 @@ class Shell {
         }
 
         return null;
+    }
+
+    private static class BackgroundJob {
+        final int jobNumber;
+        final Process process;
+        final String command;
+
+        BackgroundJob(int jobNumber, Process process, String command) {
+            this.jobNumber = jobNumber;
+            this.process = process;
+            this.command = command;
+        }
     }
 }
