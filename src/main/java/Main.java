@@ -167,9 +167,7 @@ public class Main {
                     if (currentInput.equals(lastTabInput) && scriptCandidates.equals(lastTabDisplayOptions)) {
                         System.out.print("\n");
                         for (int i = 0; i < scriptCandidates.size(); i++) {
-                            if (i > 0) {
-                                System.out.print("  ");
-                            }
+                            if (i > 0) System.out.print("  ");
                             System.out.print(scriptCandidates.get(i));
                         }
                         System.out.print("\n$ " + currentInput);
@@ -218,9 +216,7 @@ public class Main {
         if (currentInput.equals(lastTabInput) && displayOptions.equals(lastTabDisplayOptions)) {
             System.out.print("\n");
             for (int i = 0; i < displayOptions.size(); i++) {
-                if (i > 0) {
-                    System.out.print("  ");
-                }
+                if (i > 0) System.out.print("  ");
                 System.out.print(displayOptions.get(i));
             }
             System.out.print("\n$ " + currentInput);
@@ -256,9 +252,7 @@ public class Main {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (!line.isEmpty()) {
-                        candidates.add(line);
-                    }
+                    if (!line.isEmpty()) candidates.add(line);
                 }
             }
 
@@ -486,7 +480,7 @@ public class Main {
 
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
-            String marker = getJobMarker(i, backgroundJobs.size());
+            String marker = getJobsMarker(i, backgroundJobs.size());
             out.println(formatJobLine(job.jobNumber, marker, "Running", job.commandLine));
         }
 
@@ -506,7 +500,7 @@ public class Main {
         if (printDoneLines) {
             for (int idx : completedIndices) {
                 BackgroundJob job = backgroundJobs.get(idx);
-                String marker = getJobMarker(idx, backgroundJobs.size());
+                String marker = getPromptMarker(idx, backgroundJobs.size());
                 out.println(formatJobLine(job.jobNumber, marker, "Done", stripTrailingAmpersand(job.commandLine)));
             }
             out.flush();
@@ -517,11 +511,17 @@ public class Main {
         }
     }
 
-    private static String getJobMarker(int index, int size) {
+    private static String getPromptMarker(int index, int size) {
         if (size <= 0) return " ";
         if (size == 1) return "+";
         if (index == size - 1) return "+";
         if (index == size - 2) return "-";
+        return " ";
+    }
+
+    private static String getJobsMarker(int index, int size) {
+        if (size <= 0) return " ";
+        if (index == size - 1) return "+";
         return " ";
     }
 
