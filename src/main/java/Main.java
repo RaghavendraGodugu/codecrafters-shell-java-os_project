@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -14,6 +15,9 @@ import java.util.Set;
 public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
     private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
+
+    private static String lastTabPrefix = null;
+    private static List<String> lastTabMatches = new ArrayList<>();
 
     public static void main(String[] args) {
         String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
@@ -29,6 +33,7 @@ public class Main {
             System.out.flush();
 
             StringBuilder inputBuilder = new StringBuilder();
+            resetTabState();
 
             try {
                 while (true) {
@@ -43,6 +48,7 @@ public class Main {
                     if (c == '\n' || c == '\r') {
                         System.out.print("\n");
                         System.out.flush();
+                        resetTabState();
                         break;
                     } else if (c == '\t') {
                         handleTabCompletion(inputBuilder);
@@ -52,10 +58,12 @@ public class Main {
                             System.out.print("\b \b");
                             System.out.flush();
                         }
+                        resetTabState();
                     } else {
                         inputBuilder.append(c);
                         System.out.print(c);
                         System.out.flush();
+                        resetTabState();
                     }
                 }
 
@@ -104,6 +112,13 @@ public class Main {
 
         List<String> matches = findMatches(prefix);
 
+        if (matches.isEmpty()) {
+            ringBell();
+            lastTabPrefix = null;
+            lastTabMatches = new ArrayList<>();
+            return;
+        }
+
         if (matches.size() == 1) {
             String match = matches.get(0);
             String beforeToken = lastSpace == -1 ? "" : currentInput.substring(0, lastSpace + 1);
@@ -118,9 +133,31 @@ public class Main {
 
             System.out.print(match + " ");
             System.out.flush();
-        } else if (matches.isEmpty()) {
-            ringBell();
+            resetTabState();
+            return;
         }
+
+        if (prefix.equals(lastTabPrefix) && matches.equals(lastTabMatches)) {
+            System.out.print("\n");
+            for (int i = 0; i < matches.size(); i++) {
+                if (i > 0) {
+                    System.out.print("  ");
+                }
+                System.out.print(matches.get(i));
+            }
+            System.out.print("\n$ " + currentInput);
+            System.out.flush();
+            resetTabState();
+        } else {
+            ringBell();
+            lastTabPrefix = prefix;
+            lastTabMatches = new ArrayList<>(matches);
+        }
+    }
+
+    private static void resetTabState() {
+        lastTabPrefix = null;
+        lastTabMatches = new ArrayList<>();
     }
 
     private static void ringBell() {
@@ -159,7 +196,9 @@ public class Main {
             }
         }
 
-        return new ArrayList<>(matches);
+        List<String> sortedMatches = new ArrayList<>(matches);
+        Collections.sort(sortedMatches);
+        return sortedMatches;
     }
 
     private static void executeEcho(ParsedCommand parsed) throws Exception {
