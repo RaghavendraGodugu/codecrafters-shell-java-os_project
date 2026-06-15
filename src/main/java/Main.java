@@ -11,6 +11,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,6 +26,9 @@ public class Main {
     private static String lastTabInput = null;
     private static List<String> lastTabDisplayOptions = new ArrayList<>();
 
+    private static final List<BackgroundJob> backgroundJobs = new ArrayList<>();
+    private static int nextJobNumber = 1;
+
     public static void main(String[] args) {
         try {
             Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"}).waitFor();
@@ -34,6 +38,8 @@ public class Main {
         InputStream inputReader = System.in;
 
         while (true) {
+            reapFinishedJobs();
+
             System.out.print("$ ");
             System.out.flush();
 
@@ -105,6 +111,16 @@ public class Main {
                 }
             } catch (Exception e) {
                 e.printStackTrace();
+            }
+        }
+    }
+
+    private static void reapFinishedJobs() {
+        Iterator<BackgroundJob> iterator = backgroundJobs.iterator();
+        while (iterator.hasNext()) {
+            BackgroundJob job = iterator.next();
+            if (!job.process.isAlive()) {
+                iterator.remove();
             }
         }
     }
@@ -506,9 +522,15 @@ public class Main {
     }
 
     private static void executeJobs(ParsedCommand parsed) throws Exception {
+        reapFinishedJobs();
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
+
+        for (BackgroundJob job : backgroundJobs) {
+            out.println("[" + job.jobNumber + "] Running " + job.commandLine);
+        }
         out.flush();
+
         if (out != System.out) {
             out.close();
         }
@@ -594,6 +616,17 @@ public class Main {
                 pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             }
 
+            if (parsed.background) {
+                Process process = pb.start();
+                long pid = process.pid();
+                int jobNumber = nextJobNumber++;
+
+                backgroundJobs.add(new BackgroundJob(jobNumber, pid, process, String.join(" ", parsed.args)));
+                System.out.println("[" + jobNumber + "] " + pid);
+                System.out.flush();
+                return;
+            }
+
             Process process = pb.start();
             process.waitFor();
         } catch (Exception e) {
@@ -650,27 +683,33 @@ public class Main {
     private static ParsedCommand parseCommand(List<String> tokens) {
         ParsedCommand parsed = new ParsedCommand();
 
-        for (int i = 0; i < tokens.size(); i++) {
-            String token = tokens.get(i);
+        List<String> workingTokens = new ArrayList<>(tokens);
+        if (!workingTokens.isEmpty() && "&".equals(workingTokens.get(workingTokens.size() - 1))) {
+            parsed.background = true;
+            workingTokens.remove(workingTokens.size() - 1);
+        }
+
+        for (int i = 0; i < workingTokens.size(); i++) {
+            String token = workingTokens.get(i);
 
             if (token.equals(">") || token.equals("1>")) {
-                if (i + 1 < tokens.size()) {
-                    parsed.stdoutFile = tokens.get(++i);
+                if (i + 1 < workingTokens.size()) {
+                    parsed.stdoutFile = workingTokens.get(++i);
                     parsed.stdoutAppend = false;
                 }
             } else if (token.equals(">>") || token.equals("1>>")) {
-                if (i + 1 < tokens.size()) {
-                    parsed.stdoutFile = tokens.get(++i);
+                if (i + 1 < workingTokens.size()) {
+                    parsed.stdoutFile = workingTokens.get(++i);
                     parsed.stdoutAppend = true;
                 }
             } else if (token.equals("2>")) {
-                if (i + 1 < tokens.size()) {
-                    parsed.stderrFile = tokens.get(++i);
+                if (i + 1 < workingTokens.size()) {
+                    parsed.stderrFile = workingTokens.get(++i);
                     parsed.stderrAppend = false;
                 }
             } else if (token.equals("2>>")) {
-                if (i + 1 < tokens.size()) {
-                    parsed.stderrFile = tokens.get(++i);
+                if (i + 1 < workingTokens.size()) {
+                    parsed.stderrFile = workingTokens.get(++i);
                     parsed.stderrAppend = true;
                 }
             } else {
@@ -747,6 +786,7 @@ public class Main {
         boolean stdoutAppend;
         String stderrFile;
         boolean stderrAppend;
+        boolean background;
     }
 
     private static class CompletionMatch {
@@ -756,6 +796,20 @@ public class Main {
         CompletionMatch(String value, boolean isDirectory) {
             this.value = value;
             this.isDirectory = isDirectory;
+        }
+    }
+
+    private static class BackgroundJob {
+        int jobNumber;
+        long pid;
+        Process process;
+        String commandLine;
+
+        BackgroundJob(int jobNumber, long pid, Process process, String commandLine) {
+            this.jobNumber = jobNumber;
+            this.pid = pid;
+            this.process = process;
+            this.commandLine = commandLine;
         }
     }
 }
