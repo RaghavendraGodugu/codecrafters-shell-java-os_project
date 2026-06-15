@@ -7,7 +7,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
@@ -17,7 +19,7 @@ public class Main {
         String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
         try {
             Runtime.getRuntime().exec(cmd).waitFor();
-        } catch (Exception e) {
+        } catch (Exception ignored) {
         }
 
         InputStream inputReader = System.in;
@@ -92,23 +94,22 @@ public class Main {
 
     private static void handleTabCompletion(StringBuilder inputBuilder) {
         String currentInput = inputBuilder.toString();
-        int lastSpace = currentInput.lastIndexOf(' ');
-        String prefix = lastSpace == -1 ? currentInput : currentInput.substring(lastSpace + 1);
-        boolean isCommandPosition = lastSpace == -1;
 
-        if (prefix.isEmpty()) {
-            return;
-        }
+        int lastSpace = currentInput.lastIndexOf(' ');
+        boolean isCommandPosition = lastSpace == -1;
+        String prefix = isCommandPosition ? currentInput : currentInput.substring(lastSpace + 1);
 
         List<CompletionMatch> matches = isCommandPosition
                 ? findCommandMatches(prefix)
                 : findArgumentMatches(prefix);
 
-        if (matches.size() == 1) {
-            CompletionMatch match = matches.get(0);
-            String suffix = match.isDirectory ? "/" : " ";
-            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, match.value + suffix);
+        if (matches.size() != 1) {
+            return;
         }
+
+        CompletionMatch match = matches.get(0);
+        String replacement = match.value + (match.isDirectory ? "/" : " ");
+        applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
     }
 
     private static void applyCompletion(StringBuilder inputBuilder, String currentInput, int lastSpace, String prefix, String replacement) {
@@ -126,11 +127,14 @@ public class Main {
     }
 
     private static List<CompletionMatch> findCommandMatches(String prefix) {
+        Set<String> values = new LinkedHashSet<>();
         List<CompletionMatch> matches = new ArrayList<>();
 
         for (String builtin : BUILTINS) {
             if (builtin.startsWith(prefix)) {
-                matches.add(new CompletionMatch(builtin, false));
+                if (values.add(builtin)) {
+                    matches.add(new CompletionMatch(builtin, false));
+                }
             }
         }
 
@@ -149,16 +153,10 @@ public class Main {
                 }
 
                 for (File file : files) {
-                    if (file.isFile() && file.canExecute() && file.getName().startsWith(prefix)) {
-                        boolean alreadyPresent = false;
-                        for (CompletionMatch match : matches) {
-                            if (match.value.equals(file.getName())) {
-                                alreadyPresent = true;
-                                break;
-                            }
-                        }
-                        if (!alreadyPresent) {
-                            matches.add(new CompletionMatch(file.getName(), false));
+                    String name = file.getName();
+                    if (file.isFile() && file.canExecute() && name.startsWith(prefix)) {
+                        if (values.add(name)) {
+                            matches.add(new CompletionMatch(name, false));
                         }
                     }
                 }
@@ -186,11 +184,14 @@ public class Main {
 
         File folder = searchDir.toFile();
         File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.getName().startsWith(namePrefix)) {
-                    matches.add(new CompletionMatch(directoryPart + file.getName(), file.isDirectory()));
-                }
+        if (files == null) {
+            return matches;
+        }
+
+        for (File file : files) {
+            String name = file.getName();
+            if (name.startsWith(namePrefix)) {
+                matches.add(new CompletionMatch(directoryPart + name, file.isDirectory()));
             }
         }
 
@@ -438,8 +439,7 @@ public class Main {
                     if (ch == '\\' || ch == '"' || ch == '$' || ch == '\n') {
                         current.append(ch);
                     } else {
-                        current.append('\\');
-                        current.append(ch);
+                        current.append('\\').append(ch);
                     }
                 } else {
                     current.append(ch);
