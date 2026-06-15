@@ -7,17 +7,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
     private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
-
-    private static String lastTabPrefix = null;
-    private static List<String> lastTabMatches = new ArrayList<>();
 
     public static void main(String[] args) {
         String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
@@ -33,7 +27,6 @@ public class Main {
             System.out.flush();
 
             StringBuilder inputBuilder = new StringBuilder();
-            resetTabState();
 
             try {
                 while (true) {
@@ -48,7 +41,6 @@ public class Main {
                     if (c == '\n' || c == '\r') {
                         System.out.print("\n");
                         System.out.flush();
-                        resetTabState();
                         break;
                     } else if (c == '\t') {
                         handleTabCompletion(inputBuilder);
@@ -58,12 +50,10 @@ public class Main {
                             System.out.print("\b \b");
                             System.out.flush();
                         }
-                        resetTabState();
                     } else {
                         inputBuilder.append(c);
                         System.out.print(c);
                         System.out.flush();
-                        resetTabState();
                     }
                 }
 
@@ -107,65 +97,17 @@ public class Main {
         boolean isCommandPosition = lastSpace == -1;
 
         if (prefix.isEmpty()) {
-            ringBell();
             return;
         }
 
-        List<String> matches = isCommandPosition
+        List<CompletionMatch> matches = isCommandPosition
                 ? findCommandMatches(prefix)
                 : findArgumentMatches(prefix);
 
-        if (matches.isEmpty()) {
-            ringBell();
-            lastTabPrefix = null;
-            lastTabMatches = new ArrayList<>();
-            return;
-        }
-
         if (matches.size() == 1) {
-            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, matches.get(0) + " ");
-            resetTabState();
-            return;
-        }
-
-        String lcp = longestCommonPrefix(matches);
-
-        if (lcp.length() > prefix.length()) {
-            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, lcp);
-            resetTabState();
-
-            String updatedInput = inputBuilder.toString();
-            int updatedLastSpace = updatedInput.lastIndexOf(' ');
-            String updatedPrefix = updatedLastSpace == -1
-                    ? updatedInput
-                    : updatedInput.substring(updatedLastSpace + 1);
-            boolean updatedCommandPosition = updatedLastSpace == -1;
-
-            List<String> narrowedMatches = updatedCommandPosition
-                    ? findCommandMatches(updatedPrefix)
-                    : findArgumentMatches(updatedPrefix);
-
-            if (narrowedMatches.size() == 1 && updatedPrefix.equals(narrowedMatches.get(0))) {
-                applyCompletion(inputBuilder, updatedInput, updatedLastSpace, updatedPrefix, narrowedMatches.get(0) + " ");
-            }
-            return;
-        }
-
-        if (prefix.equals(lastTabPrefix) && matches.equals(lastTabMatches)) {
-            System.out.print("\n");
-            for (int i = 0; i < matches.size(); i++) {
-                if (i > 0) {
-                    System.out.print("  ");
-                }
-                System.out.print(matches.get(i));
-            }
-            System.out.print("\n$ " + currentInput);
-            System.out.flush();
-            resetTabState();
-        } else {
-            ringBell();
-            lastTabPrefix = prefix;
-            lastTabMatches = new ArrayList<>(matches);
+            CompletionMatch match = matches.get(0);
+            String suffix = match.isDirectory ? "/" : " ";
+            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, match.value + suffix);
         }
     }
 
@@ -183,42 +125,12 @@ public class Main {
         System.out.flush();
     }
 
-    private static String longestCommonPrefix(List<String> values) {
-        if (values.isEmpty()) {
-            return "";
-        }
-
-        String prefix = values.get(0);
-        for (int i = 1; i < values.size(); i++) {
-            String current = values.get(i);
-            int j = 0;
-            while (j < prefix.length() && j < current.length() && prefix.charAt(j) == current.charAt(j)) {
-                j++;
-            }
-            prefix = prefix.substring(0, j);
-            if (prefix.isEmpty()) {
-                break;
-            }
-        }
-        return prefix;
-    }
-
-    private static void resetTabState() {
-        lastTabPrefix = null;
-        lastTabMatches = new ArrayList<>();
-    }
-
-    private static void ringBell() {
-        System.out.print("\u0007");
-        System.out.flush();
-    }
-
-    private static List<String> findCommandMatches(String prefix) {
-        Set<String> matches = new LinkedHashSet<>();
+    private static List<CompletionMatch> findCommandMatches(String prefix) {
+        List<CompletionMatch> matches = new ArrayList<>();
 
         for (String builtin : BUILTINS) {
             if (builtin.startsWith(prefix)) {
-                matches.add(builtin);
+                matches.add(new CompletionMatch(builtin, false));
             }
         }
 
@@ -238,19 +150,26 @@ public class Main {
 
                 for (File file : files) {
                     if (file.isFile() && file.canExecute() && file.getName().startsWith(prefix)) {
-                        matches.add(file.getName());
+                        boolean alreadyPresent = false;
+                        for (CompletionMatch match : matches) {
+                            if (match.value.equals(file.getName())) {
+                                alreadyPresent = true;
+                                break;
+                            }
+                        }
+                        if (!alreadyPresent) {
+                            matches.add(new CompletionMatch(file.getName(), false));
+                        }
                     }
                 }
             }
         }
 
-        List<String> sortedMatches = new ArrayList<>(matches);
-        Collections.sort(sortedMatches);
-        return sortedMatches;
+        return matches;
     }
 
-    private static List<String> findArgumentMatches(String prefix) {
-        Set<String> matches = new LinkedHashSet<>();
+    private static List<CompletionMatch> findArgumentMatches(String prefix) {
+        List<CompletionMatch> matches = new ArrayList<>();
 
         String directoryPart = "";
         String namePrefix = prefix;
@@ -270,14 +189,12 @@ public class Main {
         if (files != null) {
             for (File file : files) {
                 if (file.getName().startsWith(namePrefix)) {
-                    matches.add(directoryPart + file.getName());
+                    matches.add(new CompletionMatch(directoryPart + file.getName(), file.isDirectory()));
                 }
             }
         }
 
-        List<String> sortedMatches = new ArrayList<>(matches);
-        Collections.sort(sortedMatches);
-        return sortedMatches;
+        return matches;
     }
 
     private static void executeEcho(ParsedCommand parsed) throws Exception {
@@ -573,5 +490,15 @@ public class Main {
         boolean stdoutAppend;
         String stderrFile;
         boolean stderrAppend;
+    }
+
+    private static class CompletionMatch {
+        String value;
+        boolean isDirectory;
+
+        CompletionMatch(String value, boolean isDirectory) {
+            this.value = value;
+            this.isDirectory = isDirectory;
+        }
     }
 }
