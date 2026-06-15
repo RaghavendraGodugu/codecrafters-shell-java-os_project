@@ -496,7 +496,7 @@ public class Main {
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
-        reapCompletedJobs(out);
+        reapCompletedJobsSilently();
 
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
@@ -509,10 +509,6 @@ public class Main {
     }
 
     private static void reapCompletedJobsForPrompt(PrintStream out) {
-        reapCompletedJobs(out);
-    }
-
-    private static void reapCompletedJobs(PrintStream out) {
         for (int i = 0; i < backgroundJobs.size(); ) {
             BackgroundJob job = backgroundJobs.get(i);
             if (!job.process.isAlive()) {
@@ -524,6 +520,17 @@ public class Main {
             }
         }
         out.flush();
+    }
+
+    private static void reapCompletedJobsSilently() {
+        for (int i = 0; i < backgroundJobs.size(); ) {
+            BackgroundJob job = backgroundJobs.get(i);
+            if (!job.process.isAlive()) {
+                backgroundJobs.remove(i);
+            } else {
+                i++;
+            }
+        }
     }
 
     private static String getJobMarker(int index, int size) {
@@ -539,7 +546,7 @@ public class Main {
     }
 
     private static String formatJobLine(int jobNumber, String marker, String status, String commandLine) {
-        return "[" + jobNumber + "]" + marker + " " + String.format("%-22s", status) + commandLine;
+        return "[" + jobNumber + "]" + marker + " " + status + " " + commandLine;
     }
 
     private static String stripTrailingAmpersand(String commandLine) {
