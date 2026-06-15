@@ -11,7 +11,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -38,8 +37,6 @@ public class Main {
         InputStream inputReader = System.in;
 
         while (true) {
-            reapFinishedJobs();
-
             System.out.print("$ ");
             System.out.flush();
 
@@ -111,16 +108,6 @@ public class Main {
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-            }
-        }
-    }
-
-    private static void reapFinishedJobs() {
-        Iterator<BackgroundJob> iterator = backgroundJobs.iterator();
-        while (iterator.hasNext()) {
-            BackgroundJob job = iterator.next();
-            if (!job.process.isAlive()) {
-                iterator.remove();
             }
         }
     }
@@ -522,21 +509,38 @@ public class Main {
     }
 
     private static void executeJobs(ParsedCommand parsed) throws Exception {
-        reapFinishedJobs();
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
-            String marker = (i == backgroundJobs.size() - 1) ? "+" : "-";
-            String statusField = String.format("%-24s", job.status);
-            out.println("[" + job.jobNumber + "] " + marker + " " + statusField + job.commandLine);
+            String marker = getJobMarker(i);
+            String line;
+            if (" ".equals(marker)) {
+                line = "[" + job.jobNumber + "] " + String.format("%-24s", job.status) + job.commandLine;
+            } else {
+                line = "[" + job.jobNumber + "] " + marker + " " + String.format("%-24s", job.status) + job.commandLine;
+            }
+            out.println(line);
         }
-        out.flush();
 
+        out.flush();
         if (out != System.out) {
             out.close();
         }
+    }
+
+    private static String getJobMarker(int index) {
+        int last = backgroundJobs.size() - 1;
+        int secondLast = backgroundJobs.size() - 2;
+
+        if (index == last) {
+            return "+";
+        }
+        if (index == secondLast) {
+            return "-";
+        }
+        return " ";
     }
 
     private static void executeCd(ParsedCommand parsed) throws Exception {
