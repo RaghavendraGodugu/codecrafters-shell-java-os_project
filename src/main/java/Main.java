@@ -9,7 +9,8 @@ public class Main {
 }
 
 class Shell {
-    private static final Set<String> BUILT_INS = Set.of("exit", "echo", "type", "pwd", "cd");
+    private static final Set<String> BUILT_INS =
+            Set.of("exit", "echo", "type", "pwd", "cd", "jobs");
 
     private Path currentDirectory = Paths.get(System.getProperty("user.dir"));
     private final List<BackgroundJob> backgroundJobs = new ArrayList<>();
@@ -33,50 +34,77 @@ class Shell {
                 continue;
             }
 
-            List<String> pipelineParts = splitByPipe(input);
+            input = input.trim();
 
-            if (pipelineParts.size() == 2) {
-                executePipeline(pipelineParts.get(0), pipelineParts.get(1));
+            if (isBackgroundCommand(input)) {
+                executeBackgroundInput(input);
             } else {
-                executeSingleInput(input);
+                List<String> pipelineParts = splitByPipe(input);
+                if (pipelineParts.size() == 2) {
+                    executePipeline(pipelineParts.get(0), pipelineParts.get(1));
+                } else {
+                    executeSingleCommand(parseCommand(input));
+                }
             }
         }
     }
 
-    private void executeSingleInput(String input) throws Exception {
-        List<String> command = parseCommand(input);
-        if (command.isEmpty()) {
-            return;
+    private boolean isBackgroundCommand(String input) {
+        boolean inSingleQuotes = false;
+        boolean inDoubleQuotes = false;
+        boolean escaping = false;
+
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+
+            if (escaping) {
+                escaping = false;
+                continue;
+            }
+
+            if (ch == '\\' && !inSingleQuotes) {
+                escaping = true;
+                continue;
+            }
+
+            if (ch == '\'' && !inDoubleQuotes) {
+                inSingleQuotes = !inSingleQuotes;
+                continue;
+            }
+
+            if (ch == '"' && !inSingleQuotes) {
+                inDoubleQuotes = !inDoubleQuotes;
+            }
         }
 
-        boolean runInBackground = false;
-        if (!command.isEmpty() && "&".equals(command.get(command.size() - 1))) {
-            runInBackground = true;
-            command.remove(command.size() - 1);
-        }
-
-        if (command.isEmpty()) {
-            return;
-        }
-
-        if (runInBackground) {
-            executeBackgroundCommand(command);
-        } else {
-            executeSingleCommand(command);
-        }
+        return !inSingleQuotes && !inDoubleQuotes && input.endsWith("&");
     }
 
-    private void executeBackgroundCommand(List<String> command) throws Exception {
+    private void executeBackgroundInput(String input) throws Exception {
+        String commandText = input.substring(0, input.lastIndexOf('&')).trim();
+        if (commandText.isEmpty()) {
+            return;
+        }
+
+        List<String> command = parseCommand(commandText);
+        if (command.isEmpty()) {
+            return;
+        }
+
         String cmd = command.get(0);
 
-        if (BUILT_INS.contains(cmd)) {
+        if (BUILT_INS.contains(cmd) && !cmd.equals("jobs")) {
             executeSingleCommand(command);
             return;
         }
 
         Process process = startExternalProcess(command, null);
 
-        BackgroundJob job = new BackgroundJob(nextJobNumber++, process, String.join(" ", command));
+        BackgroundJob job = new BackgroundJob(
+                nextJobNumber++,
+                process,
+                commandText + " &"
+        );
         backgroundJobs.add(job);
 
         System.out.printf("[%d] %d%n", job.jobNumber, process.pid());
@@ -230,6 +258,10 @@ class Shell {
                 handleType(command);
                 return;
 
+            case "jobs":
+                handleJobs();
+                return;
+
             default:
                 executeExternal(command, null, System.out);
         }
@@ -274,6 +306,29 @@ class Shell {
             System.out.printf("%s is %s%n", target, path);
         } else {
             System.out.printf("%s: not found%n", target);
+        }
+    }
+
+    private void handleJobs() {
+        for (int i = 0; i < backgroundJobs.size(); i++) {
+            BackgroundJob job = backgroundJobs.get(i);
+
+            String marker = " ";
+            if (backgroundJobs.size() == 1) {
+                marker = "+";
+            } else if (i == backgroundJobs.size() - 1) {
+                marker = "+";
+            } else if (i == backgroundJobs.size() - 2) {
+                marker = "-";
+            }
+
+            String status = job.process.isAlive() ? "Running" : "Done";
+
+            System.out.printf("[%d]%s  %-23s %s%n",
+                    job.jobNumber,
+                    marker,
+                    status,
+                    job.command);
         }
     }
 
