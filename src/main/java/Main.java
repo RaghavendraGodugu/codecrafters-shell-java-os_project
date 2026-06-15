@@ -131,28 +131,25 @@ class Shell {
     }
 
     private String getJobMarker(BackgroundJob targetJob) {
-        List<BackgroundJob> active = new ArrayList<>();
-        for (BackgroundJob job : backgroundJobs) {
-            if (!job.reapedFromJobsList) {
-                active.add(job);
-            }
-        }
+        int size = backgroundJobs.size();
+        int index = backgroundJobs.indexOf(targetJob);
 
-        int size = active.size();
-        int index = active.indexOf(targetJob);
-
-        if (index == -1) {
-            return " ";
-        }
+        // If only one job, it's the most recent => "+"
         if (size == 1) {
             return "+";
         }
+
+        // Most recent job => "+"
         if (index == size - 1) {
             return "+";
         }
+
+        // Job just before most recent => "-"
         if (index == size - 2) {
             return "-";
         }
+
+        // Older jobs => " "
         return " ";
     }
 
@@ -359,8 +356,8 @@ class Shell {
                     status,
                     commandText);
 
+            // Remove finished jobs from the list after printing them once here
             if (!job.process.isAlive()) {
-                job.reapedFromJobsList = true;
                 iterator.remove();
             }
         }
@@ -504,7 +501,6 @@ class Shell {
         final String commandWithoutAmpersand;
         final String commandWithAmpersand;
         boolean notifiedDone = false;
-        boolean reapedFromJobsList = false;
 
         BackgroundJob(int jobNumber, Process process, String commandWithoutAmpersand, String commandWithAmpersand) {
             this.jobNumber = jobNumber;
