@@ -103,6 +103,7 @@ class Shell {
         BackgroundJob job = new BackgroundJob(
                 nextJobNumber++,
                 process,
+                commandText,
                 commandText + " &"
         );
         backgroundJobs.add(job);
@@ -118,9 +119,31 @@ class Shell {
         while (iterator.hasNext()) {
             BackgroundJob job = iterator.next();
             if (!job.process.isAlive()) {
+                String marker = getJobMarker(job);
+                System.out.printf("[%d]%s  %-23s %s%n",
+                        job.jobNumber,
+                        marker,
+                        "Done",
+                        job.commandWithoutAmpersand);
                 iterator.remove();
             }
         }
+    }
+
+    private String getJobMarker(BackgroundJob targetJob) {
+        int size = backgroundJobs.size();
+        int index = backgroundJobs.indexOf(targetJob);
+
+        if (size == 1) {
+            return "+";
+        }
+        if (index == size - 1) {
+            return "+";
+        }
+        if (index == size - 2) {
+            return "-";
+        }
+        return " ";
     }
 
     private List<String> splitByPipe(String input) {
@@ -310,25 +333,15 @@ class Shell {
     }
 
     private void handleJobs() {
-        for (int i = 0; i < backgroundJobs.size(); i++) {
-            BackgroundJob job = backgroundJobs.get(i);
-
-            String marker = " ";
-            if (backgroundJobs.size() == 1) {
-                marker = "+";
-            } else if (i == backgroundJobs.size() - 1) {
-                marker = "+";
-            } else if (i == backgroundJobs.size() - 2) {
-                marker = "-";
-            }
-
+        for (BackgroundJob job : backgroundJobs) {
+            String marker = getJobMarker(job);
             String status = job.process.isAlive() ? "Running" : "Done";
 
             System.out.printf("[%d]%s  %-23s %s%n",
                     job.jobNumber,
                     marker,
                     status,
-                    job.command);
+                    job.commandWithAmpersand);
         }
     }
 
@@ -467,12 +480,14 @@ class Shell {
     private static class BackgroundJob {
         final int jobNumber;
         final Process process;
-        final String command;
+        final String commandWithoutAmpersand;
+        final String commandWithAmpersand;
 
-        BackgroundJob(int jobNumber, Process process, String command) {
+        BackgroundJob(int jobNumber, Process process, String commandWithoutAmpersand, String commandWithAmpersand) {
             this.jobNumber = jobNumber;
             this.process = process;
-            this.command = command;
+            this.commandWithoutAmpersand = commandWithoutAmpersand;
+            this.commandWithAmpersand = commandWithAmpersand;
         }
     }
 }
