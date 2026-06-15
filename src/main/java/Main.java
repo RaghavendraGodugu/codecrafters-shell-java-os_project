@@ -496,11 +496,11 @@ public class Main {
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
-        reapCompletedJobsSilently();
+        reapCompletedJobs(out);
 
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
-            String marker = getJobsMarker(i, backgroundJobs.size());
+            String marker = getJobMarker(i, backgroundJobs.size());
             out.println(formatJobLine(job.jobNumber, marker, "Running", job.commandLine));
         }
 
@@ -509,10 +509,14 @@ public class Main {
     }
 
     private static void reapCompletedJobsForPrompt(PrintStream out) {
+        reapCompletedJobs(out);
+    }
+
+    private static void reapCompletedJobs(PrintStream out) {
         for (int i = 0; i < backgroundJobs.size(); ) {
             BackgroundJob job = backgroundJobs.get(i);
             if (!job.process.isAlive()) {
-                String marker = getPromptMarker(i, backgroundJobs.size());
+                String marker = getJobMarker(i, backgroundJobs.size());
                 out.println(formatJobLine(job.jobNumber, marker, "Done", stripTrailingAmpersand(job.commandLine)));
                 backgroundJobs.remove(i);
             } else {
@@ -522,35 +526,13 @@ public class Main {
         out.flush();
     }
 
-    private static void reapCompletedJobsSilently() {
-        for (int i = 0; i < backgroundJobs.size(); ) {
-            if (!backgroundJobs.get(i).process.isAlive()) {
-                backgroundJobs.remove(i);
-            } else {
-                i++;
-            }
-        }
-    }
-
-    private static String getPromptMarker(int index, int size) {
-        int last = size - 1;
-        int secondLast = size - 2;
-
-        if (index == last) return "+";
-        if (index == secondLast) return "-";
-        return " ";
-    }
-
-    private static String getJobsMarker(int index, int size) {
+    private static String getJobMarker(int index, int size) {
         if (size <= 0) return " ";
-        if (size == 1) {
-            return "+";
-        }
-        if (size == 2) {
-            return index == 1 ? "+" : " ";
-        }
+        if (size == 1) return "+";
+
         int last = size - 1;
         int secondLast = size - 2;
+
         if (index == last) return "+";
         if (index == secondLast) return "-";
         return " ";
