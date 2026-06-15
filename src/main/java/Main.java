@@ -242,7 +242,20 @@ public class Main {
     private static List<CompletionMatch> findArgumentMatches(String prefix) {
         List<CompletionMatch> matches = new ArrayList<>();
 
-        File folder = currentDirectory.toFile();
+        String directoryPart = "";
+        String namePrefix = prefix;
+
+        int lastSlash = prefix.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            directoryPart = prefix.substring(0, lastSlash + 1);
+            namePrefix = prefix.substring(lastSlash + 1);
+        }
+
+        Path searchDir = directoryPart.isEmpty()
+                ? currentDirectory
+                : currentDirectory.resolve(directoryPart).normalize();
+
+        File folder = searchDir.toFile();
         File[] files = folder.listFiles();
         if (files == null) {
             return matches;
@@ -250,8 +263,8 @@ public class Main {
 
         for (File file : files) {
             String name = file.getName();
-            if (name.startsWith(prefix)) {
-                matches.add(new CompletionMatch(name, file.isDirectory()));
+            if (name.startsWith(namePrefix)) {
+                matches.add(new CompletionMatch(directoryPart + name, file.isDirectory()));
             }
         }
 
