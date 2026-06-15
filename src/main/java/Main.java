@@ -1,28 +1,81 @@
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Scanner;
 
 public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
+    private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
 
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
+        // We'll read raw bytes from System.in to catch Tab characters dynamically
+        InputStream inputReader = System.in;
 
         while (true) {
             System.out.print("$ ");
             System.out.flush();
 
-            if (!scanner.hasNextLine()) {
+            StringBuilder inputBuilder = new StringBuilder();
+            
+            try {
+                while (true) {
+                    int code = inputReader.read();
+                    
+                    // EOF or Ctrl+D
+                    if (code == -1) {
+                        return;
+                    }
+
+                    char c = (char) code;
+
+                    // Handle Enter / Newline -> execute the accumulated command string
+                    if (c == '\n' || c == '\r') {
+                        System.out.print("\n");
+                        break;
+                    }
+                    // Handle Tab key for autocompletion
+                    else if (c == '\t') {
+                        String currentInput = inputBuilder.toString();
+                        
+                        // Find any builtins that start with our current input prefix
+                        List<String> matches = new ArrayList<>();
+                        for (String builtin : BUILTINS) {
+                            if (builtin.startsWith(currentInput)) {
+                                matches.add(builtin);
+                            }
+                        }
+
+                        // Exactly one matching builtin found -> Autocomplete it!
+                        if (matches.size() == 1) {
+                            String completed = matches.get(0) + " ";
+                            // Visual overwrite: erase current text and print the full completion
+                            System.out.print("\r$ " + completed);
+                            inputBuilder.setLength(0);
+                            inputBuilder.append(completed);
+                        } else {
+                            // No matches or multiple ambiguous choices -> Ring the terminal bell
+                            System.out.print("\u0007");
+                        }
+                        System.out.flush();
+                    }
+                    // Regular characters get appended to our typing buffer
+                    else {
+                        inputBuilder.append(c);
+                        System.out.print(c);
+                        System.out.flush();
+                    }
+                }
+            } catch (IOException e) {
                 break;
             }
 
-            String input = scanner.nextLine().trim();
+            String input = inputBuilder.toString().trim();
             if (input.isEmpty()) {
                 continue;
             }
@@ -40,8 +93,6 @@ public class Main {
 
             for (int i = 0; i < argsList.size(); i++) {
                 String arg = argsList.get(i);
-                
-                // Check for overwrite operators
                 if (arg.equals(">") || arg.equals("1>") || arg.equals("2>")) {
                     if (i + 1 < argsList.size()) {
                         redirectFile = argsList.get(i + 1);
@@ -51,7 +102,6 @@ public class Main {
                         break;
                     }
                 }
-                // Check for append operators (Updated to include 2>>)
                 else if (arg.equals(">>") || arg.equals("1>>") || arg.equals("2>>")) {
                     if (i + 1 < argsList.size()) {
                         redirectFile = argsList.get(i + 1);
@@ -146,9 +196,7 @@ public class Main {
             else if (command.equals("type")) {
                 if (argsList.size() > 1) {
                     String commandToCheck = argsList.get(1);
-                    if (commandToCheck.equals("echo") || commandToCheck.equals("exit") || 
-                        commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
-                        commandToCheck.equals("cd")) {
+                    if (BUILTINS.contains(commandToCheck)) {
                         System.out.println(commandToCheck + " is a shell builtin");
                     } else {
                         String fullPath = findInPath(commandToCheck);
@@ -196,8 +244,6 @@ public class Main {
             System.setOut(originalOut);
             System.setErr(originalErr);
         }
-        
-        scanner.close();
     }
 
     private static List<String> parseArguments(String input) {
