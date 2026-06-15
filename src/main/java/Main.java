@@ -509,28 +509,32 @@ public class Main {
     }
 
     private static void reapCompletedJobs(PrintStream out) {
-        for (int i = 0; i < backgroundJobs.size(); ) {
-            BackgroundJob job = backgroundJobs.get(i);
-            if (!job.process.isAlive()) {
-                String marker = getJobMarker(i, backgroundJobs.size());
-                out.println(formatJobLine(job.jobNumber, marker, "Done", stripTrailingAmpersand(job.commandLine)));
-                backgroundJobs.remove(i);
-            } else {
-                i++;
+        List<Integer> completedIndices = new ArrayList<>();
+
+        for (int i = 0; i < backgroundJobs.size(); i++) {
+            if (!backgroundJobs.get(i).process.isAlive()) {
+                completedIndices.add(i);
             }
         }
+
+        for (int idx : completedIndices) {
+            BackgroundJob job = backgroundJobs.get(idx);
+            String marker = getJobMarker(idx, backgroundJobs.size());
+            out.println(formatJobLine(job.jobNumber, marker, "Done", stripTrailingAmpersand(job.commandLine)));
+        }
+
+        for (int i = completedIndices.size() - 1; i >= 0; i--) {
+            int idx = completedIndices.get(i);
+            backgroundJobs.remove(idx);
+        }
+
         out.flush();
     }
 
     private static String getJobMarker(int index, int size) {
-        if (size <= 0) return " ";
         if (size == 1) return "+";
-
-        int last = size - 1;
-        int secondLast = size - 2;
-
-        if (index == last) return "+";
-        if (index == secondLast) return "-";
+        if (index == size - 1) return "+";
+        if (index == size - 2) return "-";
         return " ";
     }
 
