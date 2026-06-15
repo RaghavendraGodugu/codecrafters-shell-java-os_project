@@ -49,9 +49,14 @@ public class Main {
                         if (matches.size() == 1) {
                             String completed = matches.get(0) + " ";
                             
-                            // FIX: Use ANSI Escape codes to clean up the line properly
-                            // \r moves to the start, \u001B[K clears everything from cursor to end of the line
-                            System.out.print("\r\u001B[K$ " + completed);
+                            // FIX: Instead of ANSI codes, use physical backspaces to erase the typed prefix
+                            // Print a backspace, a space (to clear), and another backspace for each character typed
+                            for (int k = 0; k < currentInput.length(); k++) {
+                                System.out.print("\b \b");
+                            }
+                            
+                            // Print the freshly completed string
+                            System.out.print(completed);
                             
                             inputBuilder.setLength(0);
                             inputBuilder.append(completed);
