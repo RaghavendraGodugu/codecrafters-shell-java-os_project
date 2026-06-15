@@ -19,7 +19,7 @@ import java.util.Set;
 
 public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
-    private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type", "complete");
+    private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type", "complete", "jobs");
     private static final Map<String, String> completionSpecs = new LinkedHashMap<>();
 
     private static String lastTabInput = null;
@@ -98,6 +98,8 @@ public class Main {
                     executeType(parsed);
                 } else if ("complete".equals(command)) {
                     executeComplete(parsed);
+                } else if ("jobs".equals(command)) {
+                    executeJobs(parsed);
                 } else {
                     runExternal(parsed);
                 }
@@ -500,6 +502,15 @@ public class Main {
             if (err != System.err) {
                 err.close();
             }
+        }
+    }
+
+    private static void executeJobs(ParsedCommand parsed) throws Exception {
+        ensureBuiltinStderrTargetExists(parsed);
+        PrintStream out = getStdoutStream(parsed);
+        out.flush();
+        if (out != System.out) {
+            out.close();
         }
     }
 
