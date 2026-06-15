@@ -14,7 +14,12 @@ public class Main {
 
             String input = scanner.nextLine();
             
-            // Print the error message in the exact format required
+            // Check if the user wants to exit the shell
+            if (input.equals("exit 0")) {
+                break; // Breaks the loop and terminates the program gracefully
+            }
+            
+            // If it's not a known command, print the error
             System.out.println(input + ": command not found");
         }
         
