@@ -115,20 +115,66 @@ public class Main {
         boolean isCommandPosition = lastSpace == -1;
         String prefix = isCommandPosition ? currentInput : currentInput.substring(lastSpace + 1);
 
-        if (!isCommandPosition && currentInput.endsWith(" ")) {
+        if (!isCommandPosition) {
             List<String> args = tokenize(currentInput.trim());
             if (!args.isEmpty()) {
                 String commandName = args.get(0);
                 String scriptPath = completionSpecs.get(commandName);
 
                 if (scriptPath != null) {
-                    List<String> scriptCandidates = runCompleterScript(scriptPath);
+                    String currentWord = prefix;
+                    String previousWord = "";
+
+                    if (args.size() >= 2) {
+                        if (currentInput.endsWith(" ")) {
+                            currentWord = "";
+                            previousWord = args.get(args.size() - 1);
+                        } else {
+                            currentWord = args.get(args.size() - 1);
+                            previousWord = args.size() >= 3 ? args.get(args.size() - 2) : "";
+                        }
+                    }
+
+                    List<String> scriptCandidates = runCompleterScript(scriptPath, commandName, currentWord, previousWord);
+
+                    if (scriptCandidates.isEmpty()) {
+                        ringBell();
+                        resetTabState();
+                        return;
+                    }
+
                     if (scriptCandidates.size() == 1) {
                         String replacement = scriptCandidates.get(0) + " ";
                         applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
                         resetTabState();
                         return;
                     }
+
+                    String commonPrefix = longestCommonPrefixStrings(scriptCandidates);
+
+                    if (commonPrefix.length() > prefix.length()) {
+                        applyCompletion(inputBuilder, currentInput, lastSpace, prefix, commonPrefix);
+                        resetTabState();
+                        return;
+                    }
+
+                    if (currentInput.equals(lastTabInput) && scriptCandidates.equals(lastTabDisplayOptions)) {
+                        System.out.print("\n");
+                        for (int i = 0; i < scriptCandidates.size(); i++) {
+                            if (i > 0) {
+                                System.out.print("  ");
+                            }
+                            System.out.print(scriptCandidates.get(i));
+                        }
+                        System.out.print("\n$ " + currentInput);
+                        System.out.flush();
+                        resetTabState();
+                    } else {
+                        ringBell();
+                        lastTabInput = currentInput;
+                        lastTabDisplayOptions = new ArrayList<>(scriptCandidates);
+                    }
+                    return;
                 }
             }
         }
@@ -182,11 +228,11 @@ public class Main {
         }
     }
 
-    private static List<String> runCompleterScript(String scriptPath) {
+    private static List<String> runCompleterScript(String scriptPath, String commandName, String currentWord, String previousWord) {
         List<String> candidates = new ArrayList<>();
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(scriptPath);
+            ProcessBuilder pb = new ProcessBuilder(scriptPath, commandName, currentWord, previousWord);
             pb.directory(currentDirectory.toFile());
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
 
@@ -205,6 +251,7 @@ public class Main {
         } catch (Exception ignored) {
         }
 
+        Collections.sort(candidates);
         return candidates;
     }
 
@@ -240,6 +287,26 @@ public class Main {
         String prefix = matches.get(0).value;
         for (int i = 1; i < matches.size(); i++) {
             String current = matches.get(i).value;
+            int j = 0;
+            while (j < prefix.length() && j < current.length() && prefix.charAt(j) == current.charAt(j)) {
+                j++;
+            }
+            prefix = prefix.substring(0, j);
+            if (prefix.isEmpty()) {
+                break;
+            }
+        }
+        return prefix;
+    }
+
+    private static String longestCommonPrefixStrings(List<String> values) {
+        if (values.isEmpty()) {
+            return "";
+        }
+
+        String prefix = values.get(0);
+        for (int i = 1; i < values.size(); i++) {
+            String current = values.get(i);
             int j = 0;
             while (j < prefix.length() && j < current.length() && prefix.charAt(j) == current.charAt(j)) {
                 j++;
