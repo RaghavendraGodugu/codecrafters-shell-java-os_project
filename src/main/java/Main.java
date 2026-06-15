@@ -120,20 +120,26 @@ public class Main {
         }
 
         if (matches.size() == 1) {
-            String match = matches.get(0);
-            String beforeToken = lastSpace == -1 ? "" : currentInput.substring(0, lastSpace + 1);
-            String completed = beforeToken + match + " ";
-
-            for (int i = 0; i < prefix.length(); i++) {
-                System.out.print("\b \b");
-            }
-
-            inputBuilder.setLength(0);
-            inputBuilder.append(completed);
-
-            System.out.print(match + " ");
-            System.out.flush();
+            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, matches.get(0) + " ");
             resetTabState();
+            return;
+        }
+
+        String lcp = longestCommonPrefix(matches);
+
+        if (lcp.length() > prefix.length()) {
+            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, lcp);
+            resetTabState();
+
+            List<String> narrowedMatches = findMatches(lcp);
+            if (narrowedMatches.size() == 1 && lcp.equals(narrowedMatches.get(0))) {
+                String updatedInput = inputBuilder.toString();
+                int updatedLastSpace = updatedInput.lastIndexOf(' ');
+                String updatedPrefix = updatedLastSpace == -1
+                        ? updatedInput
+                        : updatedInput.substring(updatedLastSpace + 1);
+                applyCompletion(inputBuilder, updatedInput, updatedLastSpace, updatedPrefix, narrowedMatches.get(0) + " ");
+            }
             return;
         }
 
@@ -153,6 +159,40 @@ public class Main {
             lastTabPrefix = prefix;
             lastTabMatches = new ArrayList<>(matches);
         }
+    }
+
+    private static void applyCompletion(StringBuilder inputBuilder, String currentInput, int lastSpace, String prefix, String replacement) {
+        String beforeToken = lastSpace == -1 ? "" : currentInput.substring(0, lastSpace + 1);
+
+        for (int i = 0; i < prefix.length(); i++) {
+            System.out.print("\b \b");
+        }
+
+        inputBuilder.setLength(0);
+        inputBuilder.append(beforeToken).append(replacement);
+
+        System.out.print(replacement);
+        System.out.flush();
+    }
+
+    private static String longestCommonPrefix(List<String> values) {
+        if (values.isEmpty()) {
+            return "";
+        }
+
+        String prefix = values.get(0);
+        for (int i = 1; i < values.size(); i++) {
+            String current = values.get(i);
+            int j = 0;
+            while (j < prefix.length() && j < current.length() && prefix.charAt(j) == current.charAt(j)) {
+                j++;
+            }
+            prefix = prefix.substring(0, j);
+            if (prefix.isEmpty()) {
+                break;
+            }
+        }
+        return prefix;
     }
 
     private static void resetTabState() {
