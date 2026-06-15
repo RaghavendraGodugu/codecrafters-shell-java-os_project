@@ -14,7 +14,7 @@ import java.util.Set;
 
 public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
-    private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
+    private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type", "complete");
 
     private static String lastTabInput = null;
     private static List<String> lastTabDisplayOptions = new ArrayList<>();
@@ -91,6 +91,8 @@ public class Main {
                     executeCd(parsed);
                 } else if ("type".equals(command)) {
                     executeType(parsed);
+                } else if ("complete".equals(command)) {
+                    executeComplete(parsed);
                 } else {
                     runExternal(parsed);
                 }
@@ -128,18 +130,7 @@ public class Main {
         String commonPrefix = longestCommonPrefix(matches);
 
         if (commonPrefix.length() > prefix.length()) {
-            String replacement = commonPrefix;
-
-            List<CompletionMatch> narrowed = isCommandPosition
-                    ? findCommandMatches(commonPrefix)
-                    : findArgumentMatches(commonPrefix);
-
-            if (narrowed.size() == 1) {
-                CompletionMatch only = narrowed.get(0);
-                replacement = only.value + (only.isDirectory ? "/" : " ");
-            }
-
-            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
+            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, commonPrefix);
             resetTabState();
             return;
         }
@@ -212,11 +203,11 @@ public class Main {
     }
 
     private static List<CompletionMatch> findCommandMatches(String prefix) {
-        Set<String> values = new LinkedHashSet<>();
+        Set<String> seen = new LinkedHashSet<>();
         List<CompletionMatch> matches = new ArrayList<>();
 
         for (String builtin : BUILTINS) {
-            if (builtin.startsWith(prefix) && values.add(builtin)) {
+            if (builtin.startsWith(prefix) && seen.add(builtin)) {
                 matches.add(new CompletionMatch(builtin, false));
             }
         }
@@ -237,7 +228,7 @@ public class Main {
 
                 for (File file : files) {
                     String name = file.getName();
-                    if (file.isFile() && file.canExecute() && name.startsWith(prefix) && values.add(name)) {
+                    if (file.isFile() && file.canExecute() && name.startsWith(prefix) && seen.add(name)) {
                         matches.add(new CompletionMatch(name, false));
                     }
                 }
@@ -251,20 +242,7 @@ public class Main {
     private static List<CompletionMatch> findArgumentMatches(String prefix) {
         List<CompletionMatch> matches = new ArrayList<>();
 
-        String directoryPart = "";
-        String namePrefix = prefix;
-
-        int lastSlash = prefix.lastIndexOf('/');
-        if (lastSlash != -1) {
-            directoryPart = prefix.substring(0, lastSlash + 1);
-            namePrefix = prefix.substring(lastSlash + 1);
-        }
-
-        Path searchDir = directoryPart.isEmpty()
-                ? currentDirectory
-                : currentDirectory.resolve(directoryPart).normalize();
-
-        File folder = searchDir.toFile();
+        File folder = currentDirectory.toFile();
         File[] files = folder.listFiles();
         if (files == null) {
             return matches;
@@ -272,8 +250,8 @@ public class Main {
 
         for (File file : files) {
             String name = file.getName();
-            if (name.startsWith(namePrefix)) {
-                matches.add(new CompletionMatch(directoryPart + name, file.isDirectory()));
+            if (name.startsWith(prefix)) {
+                matches.add(new CompletionMatch(name, file.isDirectory()));
             }
         }
 
@@ -334,6 +312,15 @@ public class Main {
             }
         }
 
+        out.flush();
+        if (out != System.out) {
+            out.close();
+        }
+    }
+
+    private static void executeComplete(ParsedCommand parsed) throws Exception {
+        ensureBuiltinStderrTargetExists(parsed);
+        PrintStream out = getStdoutStream(parsed);
         out.flush();
         if (out != System.out) {
             out.close();
