@@ -11,6 +11,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -409,13 +410,17 @@ public class Main {
         PrintStream out = getStdoutStream(parsed);
 
         for (int i = 1; i < parsed.args.size(); i++) {
-            if (i > 1) out.print(" ");
+            if (i > 1) {
+                out.print(" ");
+            }
             out.print(parsed.args.get(i));
         }
         out.println();
         out.flush();
 
-        if (out != System.out) out.close();
+        if (out != System.out) {
+            out.close();
+        }
     }
 
     private static void executePwd(ParsedCommand parsed) throws Exception {
@@ -424,7 +429,9 @@ public class Main {
         out.println(currentDirectory);
         out.flush();
 
-        if (out != System.out) out.close();
+        if (out != System.out) {
+            out.close();
+        }
     }
 
     private static void executeType(ParsedCommand parsed) throws Exception {
@@ -432,7 +439,9 @@ public class Main {
         PrintStream out = getStdoutStream(parsed);
 
         if (parsed.args.size() < 2) {
-            if (out != System.out) out.close();
+            if (out != System.out) {
+                out.close();
+            }
             return;
         }
 
@@ -450,23 +459,29 @@ public class Main {
         }
 
         out.flush();
-        if (out != System.out) out.close();
+        if (out != System.out) {
+            out.close();
+        }
     }
 
     private static void executeComplete(ParsedCommand parsed) throws Exception {
         ensureBuiltinStderrTargetExists(parsed);
+
         PrintStream out = getStdoutStream(parsed);
         PrintStream err = getStderrStream(parsed);
 
         try {
             if (parsed.args.size() >= 4 && "-C".equals(parsed.args.get(1))) {
-                completionSpecs.put(parsed.args.get(3), parsed.args.get(2));
+                String scriptPath = parsed.args.get(2);
+                String commandName = parsed.args.get(3);
+                completionSpecs.put(commandName, scriptPath);
                 out.flush();
                 return;
             }
 
             if (parsed.args.size() >= 3 && "-r".equals(parsed.args.get(1))) {
-                completionSpecs.remove(parsed.args.get(2));
+                String commandName = parsed.args.get(2);
+                completionSpecs.remove(commandName);
                 out.flush();
                 return;
             }
@@ -487,8 +502,12 @@ public class Main {
 
             out.flush();
         } finally {
-            if (out != System.out) out.close();
-            if (err != System.err) err.close();
+            if (out != System.out) {
+                out.close();
+            }
+            if (err != System.err) {
+                err.close();
+            }
         }
     }
 
@@ -501,32 +520,51 @@ public class Main {
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
             String marker = getJobMarker(i);
-            out.println("[" + job.jobNumber + "] " + marker + " " + String.format("%-24s", "Running") + job.commandLine);
+            out.println(formatJobLine(job.jobNumber, marker, "Running", job.commandLine));
         }
 
         out.flush();
-        if (out != System.out) out.close();
+        if (out != System.out) {
+            out.close();
+        }
     }
 
     private static void reapCompletedJobs(PrintStream out) {
-        List<BackgroundJob> doneJobs = new ArrayList<>();
-
-        for (BackgroundJob job : backgroundJobs) {
+        for (int i = 0; i < backgroundJobs.size(); i++) {
+            BackgroundJob job = backgroundJobs.get(i);
             if (!job.process.isAlive()) {
-                doneJobs.add(job);
+                String marker = getJobMarker(i);
+                String displayCommand = stripTrailingAmpersand(job.commandLine);
+                out.println(formatJobLine(job.jobNumber, marker, "Done", displayCommand));
+                backgroundJobs.remove(i);
+                i--;
             }
         }
-
-        backgroundJobs.removeAll(doneJobs);
         out.flush();
+    }
+
+    private static String formatJobLine(int jobNumber, String marker, String status, String commandLine) {
+        return "[" + jobNumber + "]" + marker + " " + String.format("%-22s", status) + commandLine;
+    }
+
+    private static String stripTrailingAmpersand(String commandLine) {
+        String s = commandLine.trim();
+        if (s.endsWith("&")) {
+            s = s.substring(0, s.length() - 1).trim();
+        }
+        return s;
     }
 
     private static String getJobMarker(int index) {
         int last = backgroundJobs.size() - 1;
         int secondLast = backgroundJobs.size() - 2;
 
-        if (index == last) return "+";
-        if (index == secondLast) return "-";
+        if (index == last) {
+            return "+";
+        }
+        if (index == secondLast) {
+            return "-";
+        }
         return " ";
     }
 
@@ -545,7 +583,9 @@ public class Main {
             }
 
             Path newPath = Paths.get(target);
-            if (!newPath.isAbsolute()) newPath = currentDirectory.resolve(newPath);
+            if (!newPath.isAbsolute()) {
+                newPath = currentDirectory.resolve(newPath);
+            }
             newPath = newPath.normalize();
 
             if (Files.exists(newPath) && Files.isDirectory(newPath)) {
@@ -555,19 +595,25 @@ public class Main {
                 err.flush();
             }
         } finally {
-            if (err != System.err) err.close();
+            if (err != System.err) {
+                err.close();
+            }
         }
     }
 
     private static String getHomeDirectory() {
         String home = System.getenv("HOME");
-        if (home != null && !home.isEmpty()) return home;
+        if (home != null && !home.isEmpty()) {
+            return home;
+        }
         return System.getProperty("user.home");
     }
 
     private static String findExecutable(String command) {
         String pathEnv = System.getenv("PATH");
-        if (pathEnv == null || pathEnv.isEmpty()) return null;
+        if (pathEnv == null || pathEnv.isEmpty()) {
+            return null;
+        }
 
         String[] directories = pathEnv.split(File.pathSeparator);
         for (String dir : directories) {
@@ -646,19 +692,25 @@ public class Main {
     }
 
     private static PrintStream getStdoutStream(ParsedCommand parsed) throws Exception {
-        if (parsed.stdoutFile == null) return System.out;
+        if (parsed.stdoutFile == null) {
+            return System.out;
+        }
         Path filePath = prepareFile(parsed.stdoutFile);
         return new PrintStream(new FileOutputStream(filePath.toFile(), parsed.stdoutAppend));
     }
 
     private static PrintStream getStderrStream(ParsedCommand parsed) throws Exception {
-        if (parsed.stderrFile == null) return System.err;
+        if (parsed.stderrFile == null) {
+            return System.err;
+        }
         Path filePath = prepareFile(parsed.stderrFile);
         return new PrintStream(new FileOutputStream(filePath.toFile(), parsed.stderrAppend));
     }
 
     private static void ensureBuiltinStderrTargetExists(ParsedCommand parsed) throws Exception {
-        if (parsed.stderrFile == null) return;
+        if (parsed.stderrFile == null) {
+            return;
+        }
         Path filePath = prepareFile(parsed.stderrFile);
         FileOutputStream fos = new FileOutputStream(filePath.toFile(), parsed.stderrAppend);
         fos.close();
@@ -667,14 +719,20 @@ public class Main {
     private static Path prepareFile(String file) throws Exception {
         Path filePath = resolvePath(file);
         File parent = filePath.toFile().getParentFile();
-        if (parent != null) parent.mkdirs();
-        if (!Files.exists(filePath)) Files.createFile(filePath);
+        if (parent != null) {
+            parent.mkdirs();
+        }
+        if (!Files.exists(filePath)) {
+            Files.createFile(filePath);
+        }
         return filePath;
     }
 
     private static Path resolvePath(String file) {
         Path path = Paths.get(file);
-        if (!path.isAbsolute()) path = currentDirectory.resolve(path);
+        if (!path.isAbsolute()) {
+            path = currentDirectory.resolve(path);
+        }
         return path.normalize();
     }
 
@@ -735,8 +793,11 @@ public class Main {
 
             if (escaping) {
                 if (inDoubleQuote) {
-                    if (ch == '\\' || ch == '"' || ch == '$' || ch == '\n') current.append(ch);
-                    else current.append('\\').append(ch);
+                    if (ch == '\\' || ch == '"' || ch == '$' || ch == '\n') {
+                        current.append(ch);
+                    } else {
+                        current.append('\\').append(ch);
+                    }
                 } else {
                     current.append(ch);
                 }
@@ -769,8 +830,12 @@ public class Main {
             }
         }
 
-        if (escaping) current.append('\\');
-        if (current.length() > 0) tokens.add(current.toString());
+        if (escaping) {
+            current.append('\\');
+        }
+        if (current.length() > 0) {
+            tokens.add(current.toString());
+        }
 
         return tokens;
     }
