@@ -14,7 +14,6 @@ public class Main {
     private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
 
     public static void main(String[] args) {
-        // We'll read raw bytes from System.in to catch Tab characters dynamically
         InputStream inputReader = System.in;
 
         while (true) {
@@ -27,23 +26,19 @@ public class Main {
                 while (true) {
                     int code = inputReader.read();
                     
-                    // EOF or Ctrl+D
                     if (code == -1) {
                         return;
                     }
 
                     char c = (char) code;
 
-                    // Handle Enter / Newline -> execute the accumulated command string
                     if (c == '\n' || c == '\r') {
                         System.out.print("\n");
                         break;
                     }
-                    // Handle Tab key for autocompletion
                     else if (c == '\t') {
                         String currentInput = inputBuilder.toString();
                         
-                        // Find any builtins that start with our current input prefix
                         List<String> matches = new ArrayList<>();
                         for (String builtin : BUILTINS) {
                             if (builtin.startsWith(currentInput)) {
@@ -51,20 +46,20 @@ public class Main {
                             }
                         }
 
-                        // Exactly one matching builtin found -> Autocomplete it!
                         if (matches.size() == 1) {
                             String completed = matches.get(0) + " ";
-                            // Visual overwrite: erase current text and print the full completion
-                            System.out.print("\r$ " + completed);
+                            
+                            // FIX: Use ANSI Escape codes to clean up the line properly
+                            // \r moves to the start, \u001B[K clears everything from cursor to end of the line
+                            System.out.print("\r\u001B[K$ " + completed);
+                            
                             inputBuilder.setLength(0);
                             inputBuilder.append(completed);
                         } else {
-                            // No matches or multiple ambiguous choices -> Ring the terminal bell
                             System.out.print("\u0007");
                         }
                         System.out.flush();
                     }
-                    // Regular characters get appended to our typing buffer
                     else {
                         inputBuilder.append(c);
                         System.out.print(c);
