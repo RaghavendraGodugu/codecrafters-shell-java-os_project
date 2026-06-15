@@ -105,6 +105,7 @@ public class Main {
                 : findArgumentMatches(prefix);
 
         if (matches.isEmpty()) {
+            ringBell();
             return;
         }
 
@@ -116,9 +117,28 @@ public class Main {
         }
 
         String commonPrefix = longestCommonPrefix(matches);
+
         if (commonPrefix.length() > prefix.length()) {
-            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, commonPrefix);
+            String replacement = commonPrefix;
+            if (matches.size() > 1) {
+                List<CompletionMatch> narrowed = isCommandPosition
+                        ? findCommandMatches(commonPrefix)
+                        : findArgumentMatches(commonPrefix);
+
+                if (narrowed.size() == 1) {
+                    CompletionMatch only = narrowed.get(0);
+                    replacement = only.value + (only.isDirectory ? "/" : " ");
+                }
+            }
+            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
+        } else {
+            ringBell();
         }
+    }
+
+    private static void ringBell() {
+        System.out.print("\u0007");
+        System.out.flush();
     }
 
     private static void applyCompletion(StringBuilder inputBuilder, String currentInput, int lastSpace, String prefix, String replacement) {
