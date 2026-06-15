@@ -471,6 +471,13 @@ public class Main {
                 return;
             }
 
+            if (parsed.args.size() >= 3 && "-r".equals(parsed.args.get(1))) {
+                String commandName = parsed.args.get(2);
+                completionSpecs.remove(commandName);
+                out.flush();
+                return;
+            }
+
             if (parsed.args.size() >= 3 && "-p".equals(parsed.args.get(1))) {
                 String commandName = parsed.args.get(2);
                 String scriptPath = completionSpecs.get(commandName);
