@@ -127,14 +127,33 @@ public class Main {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            // If we hit a backslash outside of ANY quotes, it's an escape character
+            // Case 1: Backslash outside of any quotes
             if (c == '\\' && !inSingleQuotes && !inDoubleQuotes) {
                 if (i + 1 < input.length()) {
-                    i++; // Jump ahead to the escaped character
+                    i++; 
                     currentArg.append(input.charAt(i));
                     hasContent = true;
                 }
-            } else if (c == '\'' && !inDoubleQuotes) {
+            } 
+            // Case 2: Backslash inside double quotes
+            else if (c == '\\' && inDoubleQuotes) {
+                if (i + 1 < input.length()) {
+                    char next = input.charAt(i + 1);
+                    // Only escape if followed by structural double-quote characters
+                    if (next == '"' || next == '\\' || next == '$' || next == '`') {
+                        i++; // Consume the backslash by jumping over it
+                        currentArg.append(next);
+                    } else {
+                        // Otherwise, treat the backslash literally
+                        currentArg.append(c);
+                    }
+                    hasContent = true;
+                } else {
+                    currentArg.append(c);
+                    hasContent = true;
+                }
+            }
+            else if (c == '\'' && !inDoubleQuotes) {
                 inSingleQuotes = !inSingleQuotes;
                 hasContent = true; 
             } else if (c == '"' && !inSingleQuotes) {
