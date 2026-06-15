@@ -2,10 +2,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 
 public class Main {
-    // Keep track of the shell's current working directory internally
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
 
     public static void main(String[] args) {
@@ -16,44 +17,55 @@ public class Main {
             System.out.flush();
 
             if (!scanner.hasNextLine()) {
-                break; // Exit if input stream ends (EOF)
+                break;
             }
 
             String input = scanner.nextLine().trim();
             if (input.isEmpty()) {
                 continue;
             }
-            
+
+            // Parse the input handling single quotes properly
+            List<String> argsList = parseArguments(input);
+            if (argsList.isEmpty()) {
+                continue;
+            }
+
+            String command = argsList.get(0);
+
             // 1. Handle exit command
-            if (input.startsWith("exit")) {
+            if (command.equals("exit")) {
                 break;
             } 
             // 2. Handle echo command
-            else if (input.startsWith("echo ")) {
-                System.out.println(input.substring(5));
+            else if (command.equals("echo")) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 1; i < argsList.size(); i++) {
+                    sb.append(argsList.get(i));
+                    if (i < argsList.size() - 1) {
+                        sb.append(" ");
+                    }
+                }
+                System.out.println(sb.toString());
             } 
             // 3. Handle pwd command
-            else if (input.equals("pwd")) {
+            else if (command.equals("pwd")) {
                 System.out.println(currentDirectory.toString());
             }
-            // 4. Handle cd command (Absolute, Relative, and Home Paths)
-            else if (input.startsWith("cd ")) {
-                String targetPathStr = input.substring(3).trim();
+            // 4. Handle cd command
+            else if (command.equals("cd")) {
+                String targetPathStr = argsList.size() > 1 ? argsList.get(1) : "~";
                 Path targetPath;
 
                 if (targetPathStr.equals("~")) {
-                    // Fetch the home directory path from environment variables
                     String homeDir = System.getenv("HOME");
                     if (homeDir == null) {
-                        // Fallback for Windows environments testing locally
                         homeDir = System.getenv("USERPROFILE");
                     }
                     targetPath = Paths.get(homeDir);
                 } else if (targetPathStr.startsWith("/")) {
-                    // Absolute path
                     targetPath = Paths.get(targetPathStr);
                 } else {
-                    // Relative path
                     targetPath = currentDirectory.resolve(targetPathStr);
                 }
 
@@ -67,32 +79,29 @@ public class Main {
                 }
             }
             // 5. Handle type command
-            else if (input.startsWith("type ")) {
-                String commandToCheck = input.substring(5).trim();
-                
-                if (commandToCheck.equals("echo") || commandToCheck.equals("exit") || 
-                    commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
-                    commandToCheck.equals("cd")) {
-                    System.out.println(commandToCheck + " is a shell builtin");
-                } else {
-                    String fullPath = findInPath(commandToCheck);
-                    if (fullPath != null) {
-                        System.out.println(commandToCheck + " is " + fullPath);
+            else if (command.equals("type")) {
+                if (argsList.size() > 1) {
+                    String commandToCheck = argsList.get(1);
+                    if (commandToCheck.equals("echo") || commandToCheck.equals("exit") || 
+                        commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
+                        commandToCheck.equals("cd")) {
+                        System.out.println(commandToCheck + " is a shell builtin");
                     } else {
-                        System.out.println(commandToCheck + ": not found");
+                        String fullPath = findInPath(commandToCheck);
+                        if (fullPath != null) {
+                            System.out.println(commandToCheck + " is " + fullPath);
+                        } else {
+                            System.out.println(commandToCheck + ": not found");
+                        }
                     }
                 }
             }
-            // 6. Try running it as an external program
+            // 6. Try running it as an external program (like cat)
             else {
-                String[] parsedInput = input.split(" ");
-                String command = parsedInput[0];
-                
                 String executablePath = findInPath(command);
-                
                 if (executablePath != null) {
                     try {
-                        ProcessBuilder pb = new ProcessBuilder(parsedInput);
+                        ProcessBuilder pb = new ProcessBuilder(argsList);
                         pb.directory(currentDirectory.toFile());
                         pb.inheritIO();
                         Process process = pb.start();
@@ -107,6 +116,40 @@ public class Main {
         }
         
         scanner.close();
+    }
+
+    // New Helper method to cleanly parse arguments with single quote tracking
+    private static List<String> parseArguments(String input) {
+        List<String> list = new ArrayList<>();
+        StringBuilder currentArg = new StringBuilder();
+        boolean inSingleQuotes = false;
+        boolean hasContent = false; // Tracks if we've accumulated anything for the current arg
+
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+
+            if (c == '\'') {
+                inSingleQuotes = !inSingleQuotes;
+                hasContent = true; // Handles empty quotes '' safely as valid empty content
+            } else if (c == ' ' && !inSingleQuotes) {
+                // If we encounter a space outside quotes, complete the current token
+                if (hasContent || currentArg.length() > 0) {
+                    list.add(currentArg.toString());
+                    currentArg.setLength(0);
+                    hasContent = false;
+                }
+            } else {
+                currentArg.append(c);
+                hasContent = true;
+            }
+        }
+
+        // Add the final token if anything remains
+        if (hasContent || currentArg.length() > 0) {
+            list.add(currentArg.toString());
+        }
+
+        return list;
     }
 
     private static String findInPath(String command) {
