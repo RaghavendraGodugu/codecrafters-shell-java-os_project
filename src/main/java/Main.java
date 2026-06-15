@@ -1,6 +1,8 @@
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -113,6 +115,24 @@ public class Main {
         boolean isCommandPosition = lastSpace == -1;
         String prefix = isCommandPosition ? currentInput : currentInput.substring(lastSpace + 1);
 
+        if (!isCommandPosition && currentInput.endsWith(" ")) {
+            List<String> args = tokenize(currentInput.trim());
+            if (!args.isEmpty()) {
+                String commandName = args.get(0);
+                String scriptPath = completionSpecs.get(commandName);
+
+                if (scriptPath != null) {
+                    List<String> scriptCandidates = runCompleterScript(scriptPath);
+                    if (scriptCandidates.size() == 1) {
+                        String replacement = scriptCandidates.get(0) + " ";
+                        applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
+                        resetTabState();
+                        return;
+                    }
+                }
+            }
+        }
+
         List<CompletionMatch> matches = isCommandPosition
                 ? findCommandMatches(prefix)
                 : findArgumentMatches(prefix);
@@ -160,6 +180,32 @@ public class Main {
             lastTabInput = currentInput;
             lastTabDisplayOptions = new ArrayList<>(displayOptions);
         }
+    }
+
+    private static List<String> runCompleterScript(String scriptPath) {
+        List<String> candidates = new ArrayList<>();
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(scriptPath);
+            pb.directory(currentDirectory.toFile());
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+
+            Process process = pb.start();
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.isEmpty()) {
+                        candidates.add(line);
+                    }
+                }
+            }
+
+            process.waitFor();
+        } catch (Exception ignored) {
+        }
+
+        return candidates;
     }
 
     private static void resetTabState() {
