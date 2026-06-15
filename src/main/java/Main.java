@@ -20,10 +20,20 @@ public class Main {
             } 
             // 2. Handle echo command
             else if (input.startsWith("echo ")) {
-                // Cut off the "echo " part (5 characters) and print the rest
                 System.out.println(input.substring(5));
             } 
-            // 3. Handle unknown commands
+            // 3. Handle type command
+            else if (input.startsWith("type ")) {
+                String commandToCheck = input.substring(5).trim();
+                
+                // Check if the given command is one of our builtins
+                if (commandToCheck.equals("echo") || commandToCheck.equals("exit") || commandToCheck.equals("type")) {
+                    System.out.println(commandToCheck + " is a shell builtin");
+                } else {
+                    System.out.println(commandToCheck + ": not found");
+                }
+            }
+            // 4. Handle unknown commands
             else {
                 System.out.println(input + ": command not found");
             }
