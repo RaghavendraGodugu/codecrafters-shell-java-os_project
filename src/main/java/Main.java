@@ -14,6 +14,14 @@ public class Main {
     private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
 
     public static void main(String[] args) {
+        // CRITICAL FIX: Put the terminal into raw, unbuffered mode so keys are sent instantly
+        String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
+        try {
+            Runtime.getRuntime().exec(cmd).waitFor();
+        } catch (Exception e) {
+            // Fallback for environments without standard tty allocation
+        }
+
         InputStream inputReader = System.in;
 
         while (true) {
@@ -49,13 +57,12 @@ public class Main {
                         if (matches.size() == 1) {
                             String completed = matches.get(0) + " ";
                             
-                            // FIX: Instead of ANSI codes, use physical backspaces to erase the typed prefix
-                            // Print a backspace, a space (to clear), and another backspace for each character typed
+                            // Erase the characters that were already typed
                             for (int k = 0; k < currentInput.length(); k++) {
                                 System.out.print("\b \b");
                             }
                             
-                            // Print the freshly completed string
+                            // Print the freshly completed string cleanly
                             System.out.print(completed);
                             
                             inputBuilder.setLength(0);
