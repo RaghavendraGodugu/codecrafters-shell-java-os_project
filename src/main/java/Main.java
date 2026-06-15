@@ -252,12 +252,25 @@ public class Main {
     private static List<String> findArgumentMatches(String prefix) {
         Set<String> matches = new LinkedHashSet<>();
 
-        File folder = currentDirectory.toFile();
+        String directoryPart = "";
+        String namePrefix = prefix;
+
+        int lastSlash = prefix.lastIndexOf('/');
+        if (lastSlash != -1) {
+            directoryPart = prefix.substring(0, lastSlash + 1);
+            namePrefix = prefix.substring(lastSlash + 1);
+        }
+
+        Path searchDir = directoryPart.isEmpty()
+                ? currentDirectory
+                : currentDirectory.resolve(directoryPart).normalize();
+
+        File folder = searchDir.toFile();
         File[] files = folder.listFiles();
         if (files != null) {
             for (File file : files) {
-                if (file.getName().startsWith(prefix)) {
-                    matches.add(file.getName());
+                if (file.getName().startsWith(namePrefix)) {
+                    matches.add(directoryPart + file.getName());
                 }
             }
         }
