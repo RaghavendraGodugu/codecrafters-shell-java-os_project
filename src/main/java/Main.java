@@ -515,13 +515,9 @@ public class Main {
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
             String marker = getJobMarker(i);
-            String line;
-            if (" ".equals(marker)) {
-                line = "[" + job.jobNumber + "] " + String.format("%-24s", job.status) + job.commandLine;
-            } else {
-                line = "[" + job.jobNumber + "] " + marker + " " + String.format("%-24s", job.status) + job.commandLine;
-            }
-            out.println(line);
+            String statusField = String.format("%-24s", job.status);
+
+            out.println("[" + job.jobNumber + "] " + marker + " " + statusField + job.commandLine);
         }
 
         out.flush();
