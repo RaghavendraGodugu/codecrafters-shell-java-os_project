@@ -25,7 +25,6 @@ public class Main {
                 continue;
             }
 
-            // Parse the input handling single and double quotes properly
             List<String> argsList = parseArguments(input);
             if (argsList.isEmpty()) {
                 continue;
@@ -118,7 +117,7 @@ public class Main {
         scanner.close();
     }
 
-    // Upgraded parsing method to handle both single and double quotes
+    // Upgraded parsing method to handle backslashes outside quotes
     private static List<String> parseArguments(String input) {
         List<String> list = new ArrayList<>();
         StringBuilder currentArg = new StringBuilder();
@@ -129,16 +128,21 @@ public class Main {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            if (c == '\'' && !inDoubleQuotes) {
-                // Toggle single quotes state only if we aren't wrapped in double quotes
+            // If we hit a backslash outside of ANY quotes, it's an escape character
+            if (c == '\\' && !inSingleQuotes && !inDoubleQuotes) {
+                // Peek at the next character, if there is one
+                if (i + 1 < input.length()) {
+                    i++; // Jump ahead to the escaped character
+                    currentArg.append(input.charAt(i));
+                    hasContent = true;
+                }
+            } else if (c == '\'' && !inDoubleQuotes) {
                 inSingleQuotes = !inSingleQuotes;
                 hasContent = true; 
             } else if (c == '"' && !inSingleQuotes) {
-                // Toggle double quotes state only if we aren't wrapped in single quotes
                 inDoubleQuotes = !inDoubleQuotes;
                 hasContent = true;
             } else if (c == ' ' && !inSingleQuotes && !inDoubleQuotes) {
-                // Space acts as an argument divider only when completely unquoted
                 if (hasContent || currentArg.length() > 0) {
                     list.add(currentArg.toString());
                     currentArg.setLength(0);
