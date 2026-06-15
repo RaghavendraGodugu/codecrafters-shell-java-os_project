@@ -8,8 +8,10 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class Main {
@@ -18,6 +20,8 @@ public class Main {
 
     private static String lastTabInput = null;
     private static List<String> lastTabDisplayOptions = new ArrayList<>();
+
+    private static final Map<String, String> completionSpecs = new LinkedHashMap<>();
 
     public static void main(String[] args) {
         String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
@@ -338,11 +342,28 @@ public class Main {
         PrintStream err = getStderrStream(parsed);
 
         try {
+            if (parsed.args.size() >= 4 && "-C".equals(parsed.args.get(1))) {
+                String scriptPath = parsed.args.get(2);
+                String commandName = parsed.args.get(3);
+                completionSpecs.put(commandName, scriptPath);
+                out.flush();
+                return;
+            }
+
             if (parsed.args.size() >= 3 && "-p".equals(parsed.args.get(1))) {
                 String commandName = parsed.args.get(2);
-                err.println("complete: " + commandName + ": no completion specification");
-                err.flush();
+                String scriptPath = completionSpecs.get(commandName);
+
+                if (scriptPath == null) {
+                    err.println("complete: " + commandName + ": no completion specification");
+                    err.flush();
+                } else {
+                    out.println("complete -C '" + scriptPath + "' " + commandName);
+                    out.flush();
+                }
+                return;
             }
+
             out.flush();
         } finally {
             if (out != System.out) {
