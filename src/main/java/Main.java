@@ -17,7 +17,7 @@ public class Main {
     private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
 
     private static String lastTabInput = null;
-    private static List<String> lastTabOptions = new ArrayList<>();
+    private static List<String> lastTabDisplayOptions = new ArrayList<>();
 
     public static void main(String[] args) {
         String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
@@ -144,18 +144,18 @@ public class Main {
             return;
         }
 
-        List<String> options = new ArrayList<>();
+        List<String> displayOptions = new ArrayList<>();
         for (CompletionMatch match : matches) {
-            options.add(match.value);
+            displayOptions.add(match.value + (match.isDirectory ? "/" : ""));
         }
 
-        if (currentInput.equals(lastTabInput) && options.equals(lastTabOptions)) {
+        if (currentInput.equals(lastTabInput) && displayOptions.equals(lastTabDisplayOptions)) {
             System.out.print("\n");
-            for (int i = 0; i < options.size(); i++) {
+            for (int i = 0; i < displayOptions.size(); i++) {
                 if (i > 0) {
                     System.out.print("  ");
                 }
-                System.out.print(options.get(i));
+                System.out.print(displayOptions.get(i));
             }
             System.out.print("\n$ " + currentInput);
             System.out.flush();
@@ -163,13 +163,13 @@ public class Main {
         } else {
             ringBell();
             lastTabInput = currentInput;
-            lastTabOptions = new ArrayList<>(options);
+            lastTabDisplayOptions = new ArrayList<>(displayOptions);
         }
     }
 
     private static void resetTabState() {
         lastTabInput = null;
-        lastTabOptions = new ArrayList<>();
+        lastTabDisplayOptions = new ArrayList<>();
     }
 
     private static void ringBell() {
