@@ -35,43 +35,50 @@ public class Main {
             // --- Redirection Parsing Logic ---
             String redirectFile = null;
             int redirectIndex = -1;
+            boolean isStderrRedirection = false; // Flag to check if we are redirecting stderr (2>)
 
             for (int i = 0; i < argsList.size(); i++) {
                 String arg = argsList.get(i);
-                if (arg.equals(">") || arg.equals("1>")) {
+                if (arg.equals(">") || arg.equals("1>") || arg.equals("2>")) {
                     if (i + 1 < argsList.size()) {
                         redirectFile = argsList.get(i + 1);
                         redirectIndex = i;
+                        isStderrRedirection = arg.equals("2>");
                         break;
                     }
                 }
             }
 
             PrintStream originalOut = System.out;
+            PrintStream originalErr = System.err;
             PrintStream fileOutStream = null;
             File targetFile = null;
 
             if (redirectIndex != -1) {
                 try {
-                    // FIX: Check if redirectFile is an absolute path or a relative path
                     if (redirectFile.startsWith("/")) {
                         targetFile = new File(redirectFile);
                     } else {
                         targetFile = new File(currentDirectory.toFile(), redirectFile);
                     }
 
-                    // Ensure parent directories exist
                     if (targetFile.getParentFile() != null) {
                         targetFile.getParentFile().mkdirs();
                     }
                     
                     fileOutStream = new PrintStream(new FileOutputStream(targetFile, false)); // overwrite
-                    System.setOut(fileOutStream);
+                    
+                    // Route the correct stream based on the operator found
+                    if (isStderrRedirection) {
+                        System.setErr(fileOutStream);
+                    } else {
+                        System.setOut(fileOutStream);
+                    }
                 } catch (IOException e) {
                     System.err.println("Shell error: Redirection target could not be opened.");
                 }
                 
-                // Strip out the redirection operators and filename from the arguments list
+                // Strip the redirection operator and filename from the final command arguments
                 argsList = new ArrayList<>(argsList.subList(0, redirectIndex));
             }
 
@@ -150,9 +157,15 @@ public class Main {
                         pb.directory(currentDirectory.toFile());
                         
                         if (redirectIndex != -1 && targetFile != null) {
-                            // Pass the properly verified absolute/relative target file object
-                            pb.redirectOutput(targetFile);
-                            pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
+                            if (isStderrRedirection) {
+                                // Redirect standard error to file, keep standard output on terminal
+                                pb.redirectError(targetFile);
+                                pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                            } else {
+                                // Redirect standard output to file, keep standard error on terminal
+                                pb.redirectOutput(targetFile);
+                                pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
+                            }
                         } else {
                             pb.inheritIO();
                         }
@@ -160,17 +173,19 @@ public class Main {
                         Process process = pb.start();
                         process.waitFor();
                     } catch (IOException | InterruptedException e) {
-                        System.out.println(command + ": command not found");
+                        System.err.println(command + ": command not found");
                     }
                 } else {
-                    System.out.println(command + ": command not found");
+                    System.err.println(command + ": command not found");
                 }
             }
 
+            // Cleanup & Restore stream states for the next loop iteration
             if (fileOutStream != null) {
                 fileOutStream.close();
             }
             System.setOut(originalOut);
+            System.setErr(originalErr);
         }
         
         scanner.close();
@@ -208,6 +223,7 @@ public class Main {
                     hasContent = true;
                 }
             }
+            // Single quotes handle
             else if (c == '\'' && !inDoubleQuotes) {
                 inSingleQuotes = !inSingleQuotes;
                 hasContent = true; 
