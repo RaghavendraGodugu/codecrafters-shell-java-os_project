@@ -526,8 +526,11 @@ public class Main {
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
-        for (BackgroundJob job : backgroundJobs) {
-            out.println("[" + job.jobNumber + "] Running " + job.commandLine);
+        for (int i = 0; i < backgroundJobs.size(); i++) {
+            BackgroundJob job = backgroundJobs.get(i);
+            String marker = (i == backgroundJobs.size() - 1) ? "+" : "-";
+            String statusField = String.format("%-24s", job.status);
+            out.println("[" + job.jobNumber + "] " + marker + " " + statusField + job.commandLine);
         }
         out.flush();
 
@@ -598,6 +601,40 @@ public class Main {
             ProcessBuilder pb = new ProcessBuilder(parsed.args);
             pb.directory(currentDirectory.toFile());
 
+            if (parsed.background) {
+                if (parsed.stdoutFile != null) {
+                    File file = prepareFile(parsed.stdoutFile).toFile();
+                    pb.redirectOutput(parsed.stdoutAppend
+                            ? ProcessBuilder.Redirect.appendTo(file)
+                            : ProcessBuilder.Redirect.to(file));
+                } else {
+                    pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                }
+
+                if (parsed.stderrFile != null) {
+                    File file = prepareFile(parsed.stderrFile).toFile();
+                    pb.redirectError(parsed.stderrAppend
+                            ? ProcessBuilder.Redirect.appendTo(file)
+                            : ProcessBuilder.Redirect.to(file));
+                } else {
+                    pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                }
+
+                pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+
+                Process process = pb.start();
+                long pid = process.pid();
+                int jobNumber = nextJobNumber++;
+                String commandLine = parsed.originalCommandForJobs != null
+                        ? parsed.originalCommandForJobs
+                        : String.join(" ", parsed.args);
+
+                backgroundJobs.add(new BackgroundJob(jobNumber, pid, process, commandLine, "Running"));
+                System.out.println("[" + jobNumber + "] " + pid);
+                System.out.flush();
+                return;
+            }
+
             if (parsed.stdoutFile != null) {
                 File file = prepareFile(parsed.stdoutFile).toFile();
                 pb.redirectOutput(parsed.stdoutAppend
@@ -616,16 +653,7 @@ public class Main {
                 pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             }
 
-            if (parsed.background) {
-                Process process = pb.start();
-                long pid = process.pid();
-                int jobNumber = nextJobNumber++;
-
-                backgroundJobs.add(new BackgroundJob(jobNumber, pid, process, String.join(" ", parsed.args)));
-                System.out.println("[" + jobNumber + "] " + pid);
-                System.out.flush();
-                return;
-            }
+            pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
 
             Process process = pb.start();
             process.waitFor();
@@ -687,6 +715,7 @@ public class Main {
         if (!workingTokens.isEmpty() && "&".equals(workingTokens.get(workingTokens.size() - 1))) {
             parsed.background = true;
             workingTokens.remove(workingTokens.size() - 1);
+            parsed.originalCommandForJobs = String.join(" ", workingTokens) + " &";
         }
 
         for (int i = 0; i < workingTokens.size(); i++) {
@@ -715,6 +744,10 @@ public class Main {
             } else {
                 parsed.args.add(token);
             }
+        }
+
+        if (parsed.originalCommandForJobs == null) {
+            parsed.originalCommandForJobs = String.join(" ", parsed.args);
         }
 
         return parsed;
@@ -787,6 +820,7 @@ public class Main {
         String stderrFile;
         boolean stderrAppend;
         boolean background;
+        String originalCommandForJobs;
     }
 
     private static class CompletionMatch {
@@ -804,12 +838,14 @@ public class Main {
         long pid;
         Process process;
         String commandLine;
+        String status;
 
-        BackgroundJob(int jobNumber, long pid, Process process, String commandLine) {
+        BackgroundJob(int jobNumber, long pid, Process process, String commandLine, String status) {
             this.jobNumber = jobNumber;
             this.pid = pid;
             this.process = process;
             this.commandLine = commandLine;
+            this.status = status;
         }
     }
 }
