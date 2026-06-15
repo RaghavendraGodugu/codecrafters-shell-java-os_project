@@ -121,26 +121,13 @@ public class Main {
 
                 if (scriptPath != null) {
                     String currentWord = currentInput.endsWith(" ") ? "" : prefix;
-                    String previousWord = "";
-
-                    if (currentInput.endsWith(" ")) {
-                        if (!args.isEmpty()) {
-                            previousWord = args.get(args.size() - 1);
-                        }
-                    } else {
-                        if (args.size() >= 2) {
-                            previousWord = args.get(args.size() - 2 < 0 ? 0 : args.size() - 2);
-                            if (args.size() == 2) {
-                                previousWord = commandName;
-                            }
-                        }
-                    }
+                    String thirdArg = "";
 
                     List<String> scriptCandidates = runCompleterScript(
                             scriptPath,
-                            currentWord,
-                            previousWord,
                             commandName,
+                            currentWord,
+                            thirdArg,
                             currentInput
                     );
 
@@ -228,9 +215,9 @@ public class Main {
 
     private static List<String> runCompleterScript(
             String scriptPath,
-            String currentWord,
-            String previousWord,
             String commandName,
+            String currentWord,
+            String thirdArg,
             String fullCommandLine
     ) {
         List<String> candidates = new ArrayList<>();
@@ -238,9 +225,9 @@ public class Main {
         try {
             ProcessBuilder pb = new ProcessBuilder(
                     scriptPath,
+                    commandName,
                     currentWord,
-                    previousWord,
-                    commandName
+                    thirdArg
             );
             pb.directory(currentDirectory.toFile());
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
