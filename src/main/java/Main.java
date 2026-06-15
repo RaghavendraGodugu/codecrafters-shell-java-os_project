@@ -14,13 +14,19 @@ public class Main {
 
             String input = scanner.nextLine();
             
-            // Check if the command starts with "exit"
+            // 1. Handle exit command
             if (input.startsWith("exit")) {
-                break; // Breaks the loop and terminates the program cleanly
+                break;
+            } 
+            // 2. Handle echo command
+            else if (input.startsWith("echo ")) {
+                // Cut off the "echo " part (5 characters) and print the rest
+                System.out.println(input.substring(5));
+            } 
+            // 3. Handle unknown commands
+            else {
+                System.out.println(input + ": command not found");
             }
-            
-            // If it's not a known command, print the error
-            System.out.println(input + ": command not found");
         }
         
         scanner.close();
