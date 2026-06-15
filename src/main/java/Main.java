@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -103,13 +104,21 @@ public class Main {
                 ? findCommandMatches(prefix)
                 : findArgumentMatches(prefix);
 
-        if (matches.size() != 1) {
+        if (matches.isEmpty()) {
             return;
         }
 
-        CompletionMatch match = matches.get(0);
-        String replacement = match.value + (match.isDirectory ? "/" : " ");
-        applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
+        if (matches.size() == 1) {
+            CompletionMatch match = matches.get(0);
+            String replacement = match.value + (match.isDirectory ? "/" : " ");
+            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
+            return;
+        }
+
+        String commonPrefix = longestCommonPrefix(matches);
+        if (commonPrefix.length() > prefix.length()) {
+            applyCompletion(inputBuilder, currentInput, lastSpace, prefix, commonPrefix);
+        }
     }
 
     private static void applyCompletion(StringBuilder inputBuilder, String currentInput, int lastSpace, String prefix, String replacement) {
@@ -126,15 +135,33 @@ public class Main {
         System.out.flush();
     }
 
+    private static String longestCommonPrefix(List<CompletionMatch> matches) {
+        if (matches.isEmpty()) {
+            return "";
+        }
+
+        String prefix = matches.get(0).value;
+        for (int i = 1; i < matches.size(); i++) {
+            String current = matches.get(i).value;
+            int j = 0;
+            while (j < prefix.length() && j < current.length() && prefix.charAt(j) == current.charAt(j)) {
+                j++;
+            }
+            prefix = prefix.substring(0, j);
+            if (prefix.isEmpty()) {
+                break;
+            }
+        }
+        return prefix;
+    }
+
     private static List<CompletionMatch> findCommandMatches(String prefix) {
         Set<String> values = new LinkedHashSet<>();
         List<CompletionMatch> matches = new ArrayList<>();
 
         for (String builtin : BUILTINS) {
-            if (builtin.startsWith(prefix)) {
-                if (values.add(builtin)) {
-                    matches.add(new CompletionMatch(builtin, false));
-                }
+            if (builtin.startsWith(prefix) && values.add(builtin)) {
+                matches.add(new CompletionMatch(builtin, false));
             }
         }
 
@@ -154,15 +181,14 @@ public class Main {
 
                 for (File file : files) {
                     String name = file.getName();
-                    if (file.isFile() && file.canExecute() && name.startsWith(prefix)) {
-                        if (values.add(name)) {
-                            matches.add(new CompletionMatch(name, false));
-                        }
+                    if (file.isFile() && file.canExecute() && name.startsWith(prefix) && values.add(name)) {
+                        matches.add(new CompletionMatch(name, false));
                     }
                 }
             }
         }
 
+        Collections.sort(matches, (a, b) -> a.value.compareTo(b.value));
         return matches;
     }
 
@@ -195,6 +221,7 @@ public class Main {
             }
         }
 
+        Collections.sort(matches, (a, b) -> a.value.compareTo(b.value));
         return matches;
     }
 
