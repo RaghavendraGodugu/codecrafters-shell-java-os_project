@@ -38,7 +38,7 @@ public class Main {
 
         while (true) {
             try {
-                reapCompletedJobs(System.out, true);
+                reapCompletedJobs(System.out);
 
                 System.out.print("$ ");
                 System.out.flush();
@@ -167,7 +167,9 @@ public class Main {
                     if (currentInput.equals(lastTabInput) && scriptCandidates.equals(lastTabDisplayOptions)) {
                         System.out.print("\n");
                         for (int i = 0; i < scriptCandidates.size(); i++) {
-                            if (i > 0) System.out.print("  ");
+                            if (i > 0) {
+                                System.out.print("  ");
+                            }
                             System.out.print(scriptCandidates.get(i));
                         }
                         System.out.print("\n$ " + currentInput);
@@ -216,7 +218,9 @@ public class Main {
         if (currentInput.equals(lastTabInput) && displayOptions.equals(lastTabDisplayOptions)) {
             System.out.print("\n");
             for (int i = 0; i < displayOptions.size(); i++) {
-                if (i > 0) System.out.print("  ");
+                if (i > 0) {
+                    System.out.print("  ");
+                }
                 System.out.print(displayOptions.get(i));
             }
             System.out.print("\n$ " + currentInput);
@@ -252,7 +256,9 @@ public class Main {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (!line.isEmpty()) candidates.add(line);
+                    if (!line.isEmpty()) {
+                        candidates.add(line);
+                    }
                 }
             }
 
@@ -289,7 +295,9 @@ public class Main {
     }
 
     private static String longestCommonPrefix(List<CompletionMatch> matches) {
-        if (matches.isEmpty()) return "";
+        if (matches.isEmpty()) {
+            return "";
+        }
 
         String prefix = matches.get(0).value;
         for (int i = 1; i < matches.size(); i++) {
@@ -299,13 +307,17 @@ public class Main {
                 j++;
             }
             prefix = prefix.substring(0, j);
-            if (prefix.isEmpty()) break;
+            if (prefix.isEmpty()) {
+                break;
+            }
         }
         return prefix;
     }
 
     private static String longestCommonPrefixStrings(List<String> values) {
-        if (values.isEmpty()) return "";
+        if (values.isEmpty()) {
+            return "";
+        }
 
         String prefix = values.get(0);
         for (int i = 1; i < values.size(); i++) {
@@ -315,7 +327,9 @@ public class Main {
                 j++;
             }
             prefix = prefix.substring(0, j);
-            if (prefix.isEmpty()) break;
+            if (prefix.isEmpty()) {
+                break;
+            }
         }
         return prefix;
     }
@@ -335,10 +349,14 @@ public class Main {
             String[] directories = pathEnv.split(File.pathSeparator);
             for (String dir : directories) {
                 File folder = new File(dir);
-                if (!folder.exists() || !folder.isDirectory()) continue;
+                if (!folder.exists() || !folder.isDirectory()) {
+                    continue;
+                }
 
                 File[] files = folder.listFiles();
-                if (files == null) continue;
+                if (files == null) {
+                    continue;
+                }
 
                 for (File file : files) {
                     String name = file.getName();
@@ -371,7 +389,9 @@ public class Main {
 
         File folder = searchDir.toFile();
         File[] files = folder.listFiles();
-        if (files == null) return matches;
+        if (files == null) {
+            return matches;
+        }
 
         for (File file : files) {
             String name = file.getName();
@@ -476,11 +496,11 @@ public class Main {
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
-        reapCompletedJobs(out, false);
+        reapCompletedJobs(out);
 
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
-            String marker = getJobsMarker(i, backgroundJobs.size());
+            String marker = getJobMarker(i, backgroundJobs.size());
             out.println(formatJobLine(job.jobNumber, marker, "Running", job.commandLine));
         }
 
@@ -488,40 +508,29 @@ public class Main {
         if (out != System.out) out.close();
     }
 
-    private static void reapCompletedJobs(PrintStream out, boolean printDoneLines) {
-        List<Integer> completedIndices = new ArrayList<>();
-
-        for (int i = 0; i < backgroundJobs.size(); i++) {
-            if (!backgroundJobs.get(i).process.isAlive()) {
-                completedIndices.add(i);
-            }
-        }
-
-        if (printDoneLines) {
-            for (int idx : completedIndices) {
-                BackgroundJob job = backgroundJobs.get(idx);
-                String marker = getPromptMarker(idx, backgroundJobs.size());
+    private static void reapCompletedJobs(PrintStream out) {
+        for (int i = 0; i < backgroundJobs.size(); ) {
+            BackgroundJob job = backgroundJobs.get(i);
+            if (!job.process.isAlive()) {
+                String marker = getJobMarker(i, backgroundJobs.size());
                 out.println(formatJobLine(job.jobNumber, marker, "Done", stripTrailingAmpersand(job.commandLine)));
+                backgroundJobs.remove(i);
+            } else {
+                i++;
             }
-            out.flush();
         }
-
-        for (int i = completedIndices.size() - 1; i >= 0; i--) {
-            backgroundJobs.remove((int) completedIndices.get(i));
-        }
+        out.flush();
     }
 
-    private static String getPromptMarker(int index, int size) {
+    private static String getJobMarker(int index, int size) {
         if (size <= 0) return " ";
         if (size == 1) return "+";
-        if (index == size - 1) return "+";
-        if (index == size - 2) return "-";
-        return " ";
-    }
 
-    private static String getJobsMarker(int index, int size) {
-        if (size <= 0) return " ";
-        if (index == size - 1) return "+";
+        int last = size - 1;
+        int secondLast = size - 2;
+
+        if (index == last) return "+";
+        if (index == secondLast) return "-";
         return " ";
     }
 
