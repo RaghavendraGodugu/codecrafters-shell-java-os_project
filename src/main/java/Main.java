@@ -225,10 +225,12 @@ public class Main {
         PrintStream err = getStderrStream(parsed);
         try {
             String target;
+            String homeDir = getHomeDirectory();
+
             if (parsed.args.size() < 2 || "~".equals(parsed.args.get(1))) {
-                target = System.getProperty("user.home");
+                target = homeDir;
             } else if (parsed.args.get(1).startsWith("~/")) {
-                target = System.getProperty("user.home") + parsed.args.get(1).substring(1);
+                target = homeDir + parsed.args.get(1).substring(1);
             } else {
                 target = parsed.args.get(1);
             }
@@ -250,6 +252,14 @@ public class Main {
                 err.close();
             }
         }
+    }
+
+    private static String getHomeDirectory() {
+        String home = System.getenv("HOME");
+        if (home != null && !home.isEmpty()) {
+            return home;
+        }
+        return System.getProperty("user.home");
     }
 
     private static String findExecutable(String command) {
@@ -389,7 +399,16 @@ public class Main {
             char ch = input.charAt(i);
 
             if (escaping) {
-                current.append(ch);
+                if (inDoubleQuote) {
+                    if (ch == '\\' || ch == '"' || ch == '$' || ch == '\n') {
+                        current.append(ch);
+                    } else {
+                        current.append('\\');
+                        current.append(ch);
+                    }
+                } else {
+                    current.append(ch);
+                }
                 escaping = false;
                 continue;
             }
