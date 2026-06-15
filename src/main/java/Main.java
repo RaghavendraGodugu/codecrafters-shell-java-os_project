@@ -16,6 +16,9 @@ public class Main {
     private static Path currentDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
     private static final List<String> BUILTINS = Arrays.asList("echo", "exit", "pwd", "cd", "type");
 
+    private static String lastTabInput = null;
+    private static List<String> lastTabOptions = new ArrayList<>();
+
     public static void main(String[] args) {
         String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
         try {
@@ -30,6 +33,7 @@ public class Main {
             System.out.flush();
 
             StringBuilder inputBuilder = new StringBuilder();
+            resetTabState();
 
             try {
                 while (true) {
@@ -44,6 +48,7 @@ public class Main {
                     if (c == '\n' || c == '\r') {
                         System.out.print("\n");
                         System.out.flush();
+                        resetTabState();
                         break;
                     } else if (c == '\t') {
                         handleTabCompletion(inputBuilder);
@@ -53,10 +58,12 @@ public class Main {
                             System.out.print("\b \b");
                             System.out.flush();
                         }
+                        resetTabState();
                     } else {
                         inputBuilder.append(c);
                         System.out.print(c);
                         System.out.flush();
+                        resetTabState();
                     }
                 }
 
@@ -106,6 +113,7 @@ public class Main {
 
         if (matches.isEmpty()) {
             ringBell();
+            resetTabState();
             return;
         }
 
@@ -113,6 +121,7 @@ public class Main {
             CompletionMatch match = matches.get(0);
             String replacement = match.value + (match.isDirectory ? "/" : " ");
             applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
+            resetTabState();
             return;
         }
 
@@ -120,20 +129,47 @@ public class Main {
 
         if (commonPrefix.length() > prefix.length()) {
             String replacement = commonPrefix;
-            if (matches.size() > 1) {
-                List<CompletionMatch> narrowed = isCommandPosition
-                        ? findCommandMatches(commonPrefix)
-                        : findArgumentMatches(commonPrefix);
 
-                if (narrowed.size() == 1) {
-                    CompletionMatch only = narrowed.get(0);
-                    replacement = only.value + (only.isDirectory ? "/" : " ");
-                }
+            List<CompletionMatch> narrowed = isCommandPosition
+                    ? findCommandMatches(commonPrefix)
+                    : findArgumentMatches(commonPrefix);
+
+            if (narrowed.size() == 1) {
+                CompletionMatch only = narrowed.get(0);
+                replacement = only.value + (only.isDirectory ? "/" : " ");
             }
+
             applyCompletion(inputBuilder, currentInput, lastSpace, prefix, replacement);
+            resetTabState();
+            return;
+        }
+
+        List<String> options = new ArrayList<>();
+        for (CompletionMatch match : matches) {
+            options.add(match.value);
+        }
+
+        if (currentInput.equals(lastTabInput) && options.equals(lastTabOptions)) {
+            System.out.print("\n");
+            for (int i = 0; i < options.size(); i++) {
+                if (i > 0) {
+                    System.out.print("  ");
+                }
+                System.out.print(options.get(i));
+            }
+            System.out.print("\n$ " + currentInput);
+            System.out.flush();
+            resetTabState();
         } else {
             ringBell();
+            lastTabInput = currentInput;
+            lastTabOptions = new ArrayList<>(options);
         }
+    }
+
+    private static void resetTabState() {
+        lastTabInput = null;
+        lastTabOptions = new ArrayList<>();
     }
 
     private static void ringBell() {
