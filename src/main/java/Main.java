@@ -35,15 +35,28 @@ public class Main {
             // --- Redirection Parsing Logic ---
             String redirectFile = null;
             int redirectIndex = -1;
-            boolean isStderrRedirection = false; // Flag to check if we are redirecting stderr (2>)
+            boolean isStderrRedirection = false; 
+            boolean appendMode = false; // Flag to handle overwriting (false) vs appending (true)
 
             for (int i = 0; i < argsList.size(); i++) {
                 String arg = argsList.get(i);
+                // Check for overwrite operators
                 if (arg.equals(">") || arg.equals("1>") || arg.equals("2>")) {
                     if (i + 1 < argsList.size()) {
                         redirectFile = argsList.get(i + 1);
                         redirectIndex = i;
                         isStderrRedirection = arg.equals("2>");
+                        appendMode = false; 
+                        break;
+                    }
+                }
+                // Check for append operators (NEW)
+                else if (arg.equals(">>") || arg.equals("1>>")) {
+                    if (i + 1 < argsList.size()) {
+                        redirectFile = argsList.get(i + 1);
+                        redirectIndex = i;
+                        isStderrRedirection = false;
+                        appendMode = true; 
                         break;
                     }
                 }
@@ -66,9 +79,9 @@ public class Main {
                         targetFile.getParentFile().mkdirs();
                     }
                     
-                    fileOutStream = new PrintStream(new FileOutputStream(targetFile, false)); // overwrite
+                    // Passing appendMode here allows file appending dynamically when >> is used
+                    fileOutStream = new PrintStream(new FileOutputStream(targetFile, appendMode)); 
                     
-                    // Route the correct stream based on the operator found
                     if (isStderrRedirection) {
                         System.setErr(fileOutStream);
                     } else {
@@ -78,7 +91,6 @@ public class Main {
                     System.err.println("Shell error: Redirection target could not be opened.");
                 }
                 
-                // Strip the redirection operator and filename from the final command arguments
                 argsList = new ArrayList<>(argsList.subList(0, redirectIndex));
             }
 
@@ -158,12 +170,10 @@ public class Main {
                         
                         if (redirectIndex != -1 && targetFile != null) {
                             if (isStderrRedirection) {
-                                // Redirect standard error to file, keep standard output on terminal
-                                pb.redirectError(targetFile);
+                                pb.redirectError(appendMode ? ProcessBuilder.Redirect.appendTo(targetFile) : ProcessBuilder.Redirect.to(targetFile));
                                 pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
                             } else {
-                                // Redirect standard output to file, keep standard error on terminal
-                                pb.redirectOutput(targetFile);
+                                pb.redirectOutput(appendMode ? ProcessBuilder.Redirect.appendTo(targetFile) : ProcessBuilder.Redirect.to(targetFile));
                                 pb.redirectError(ProcessBuilder.Redirect.INHERIT); 
                             }
                         } else {
@@ -180,7 +190,6 @@ public class Main {
                 }
             }
 
-            // Cleanup & Restore stream states for the next loop iteration
             if (fileOutStream != null) {
                 fileOutStream.close();
             }
@@ -223,7 +232,6 @@ public class Main {
                     hasContent = true;
                 }
             }
-            // Single quotes handle
             else if (c == '\'' && !inDoubleQuotes) {
                 inSingleQuotes = !inSingleQuotes;
                 hasContent = true; 
