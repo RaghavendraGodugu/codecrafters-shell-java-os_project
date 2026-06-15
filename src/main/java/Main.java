@@ -27,9 +27,8 @@ public class Main {
     private static final Map<String, String> completionSpecs = new LinkedHashMap<>();
 
     public static void main(String[] args) {
-        String[] cmd = {"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"};
         try {
-            Runtime.getRuntime().exec(cmd).waitFor();
+            Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "stty -icanon -echo < /dev/tty"}).waitFor();
         } catch (Exception ignored) {
         }
 
@@ -111,7 +110,6 @@ public class Main {
 
     private static void handleTabCompletion(StringBuilder inputBuilder) {
         String currentInput = inputBuilder.toString();
-
         int lastSpace = currentInput.lastIndexOf(' ');
         boolean isCommandPosition = lastSpace == -1;
         String prefix = isCommandPosition ? currentInput : currentInput.substring(lastSpace + 1);
@@ -123,24 +121,17 @@ public class Main {
                 String scriptPath = completionSpecs.get(commandName);
 
                 if (scriptPath != null) {
-                    String currentWord = prefix;
-                    String previousWord = "";
-
-                    if (args.size() >= 2) {
-                        if (currentInput.endsWith(" ")) {
-                            currentWord = "";
-                            previousWord = args.get(args.size() - 1);
-                        } else {
-                            currentWord = args.get(args.size() - 1);
-                            previousWord = args.size() >= 3 ? args.get(args.size() - 2) : "";
-                        }
+                    String currentWord;
+                    if (currentInput.endsWith(" ")) {
+                        currentWord = "";
+                    } else {
+                        currentWord = prefix;
                     }
 
                     List<String> scriptCandidates = runCompleterScript(
                             scriptPath,
-                            commandName,
                             currentWord,
-                            previousWord,
+                            commandName,
                             currentInput
                     );
 
@@ -197,7 +188,6 @@ public class Main {
         }
 
         String commonPrefix = longestCommonPrefix(matches);
-
         if (commonPrefix.length() > prefix.length()) {
             applyCompletion(inputBuilder, currentInput, lastSpace, prefix, commonPrefix);
             resetTabState();
@@ -229,15 +219,14 @@ public class Main {
 
     private static List<String> runCompleterScript(
             String scriptPath,
-            String commandName,
             String currentWord,
-            String previousWord,
+            String commandName,
             String fullCommandLine
     ) {
         List<String> candidates = new ArrayList<>();
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(scriptPath, commandName, currentWord, previousWord);
+            ProcessBuilder pb = new ProcessBuilder(scriptPath, currentWord, commandName);
             pb.directory(currentDirectory.toFile());
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
 
