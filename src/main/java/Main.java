@@ -34,17 +34,28 @@ public class Main {
             } 
             // 3. Handle pwd command
             else if (input.equals("pwd")) {
-                // Print our internally tracked current directory
                 System.out.println(currentDirectory.toString());
             }
-            // 4. Handle cd command (Absolute Paths)
+            // 4. Handle cd command (Absolute & Relative Paths)
             else if (input.startsWith("cd ")) {
                 String targetPathStr = input.substring(3).trim();
-                File targetDir = new File(targetPathStr);
+                Path targetPath;
 
-                // Verify if the path exists and is a directory
+                if (targetPathStr.startsWith("/")) {
+                    // It's an absolute path
+                    targetPath = Paths.get(targetPathStr);
+                } else {
+                    // It's a relative path -> resolve it against our current directory position
+                    targetPath = currentDirectory.resolve(targetPathStr);
+                }
+
+                // .normalize() resolves structural shortcut tokens like "." and ".."
+                targetPath = targetPath.normalize().toAbsolutePath();
+                File targetDir = targetPath.toFile();
+
+                // Verify if the resolved path exists and is a valid directory
                 if (targetDir.exists() && targetDir.isDirectory()) {
-                    currentDirectory = targetDir.toPath().toAbsolutePath();
+                    currentDirectory = targetPath;
                 } else {
                     System.out.println("cd: " + targetPathStr + ": No such file or directory");
                 }
@@ -53,7 +64,6 @@ public class Main {
             else if (input.startsWith("type ")) {
                 String commandToCheck = input.substring(5).trim();
                 
-                // Added "cd" to the recognized builtins
                 if (commandToCheck.equals("echo") || commandToCheck.equals("exit") || 
                     commandToCheck.equals("type") || commandToCheck.equals("pwd") || 
                     commandToCheck.equals("cd")) {
@@ -77,7 +87,6 @@ public class Main {
                 if (executablePath != null) {
                     try {
                         ProcessBuilder pb = new ProcessBuilder(parsedInput);
-                        // Make sure external processes launch inside our tracked directory path
                         pb.directory(currentDirectory.toFile());
                         pb.inheritIO();
                         Process process = pb.start();
