@@ -117,7 +117,6 @@ public class Main {
         scanner.close();
     }
 
-    // Upgraded parsing method to handle backslashes outside quotes
     private static List<String> parseArguments(String input) {
         List<String> list = new ArrayList<>();
         StringBuilder currentArg = new StringBuilder();
@@ -130,7 +129,6 @@ public class Main {
 
             // If we hit a backslash outside of ANY quotes, it's an escape character
             if (c == '\\' && !inSingleQuotes && !inDoubleQuotes) {
-                // Peek at the next character, if there is one
                 if (i + 1 < input.length()) {
                     i++; // Jump ahead to the escaped character
                     currentArg.append(input.charAt(i));
