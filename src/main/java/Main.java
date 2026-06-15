@@ -122,11 +122,18 @@ public class Main {
                 if (scriptPath != null) {
                     String currentWord = currentInput.endsWith(" ") ? "" : prefix;
 
+                    String previousWord;
+                    if (currentInput.endsWith(" ")) {
+                        previousWord = args.get(args.size() - 1);
+                    } else {
+                        previousWord = args.size() >= 2 ? args.get(args.size() - 2) : commandName;
+                    }
+
                     List<String> scriptCandidates = runCompleterScript(
                             scriptPath,
                             commandName,
                             currentWord,
-                            commandName,
+                            previousWord,
                             currentInput
                     );
 
