@@ -11,7 +11,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,7 +38,7 @@ public class Main {
 
         while (true) {
             try {
-                reapCompletedJobs(System.out);
+                reapCompletedJobsForPrompt(System.out);
 
                 System.out.print("$ ");
                 System.out.flush();
@@ -515,7 +514,7 @@ public class Main {
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
-        reapCompletedJobs(out);
+        reapCompletedJobsSilently();
 
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
@@ -529,18 +528,29 @@ public class Main {
         }
     }
 
-    private static void reapCompletedJobs(PrintStream out) {
-        for (int i = 0; i < backgroundJobs.size(); i++) {
+    private static void reapCompletedJobsForPrompt(PrintStream out) {
+        for (int i = 0; i < backgroundJobs.size(); ) {
             BackgroundJob job = backgroundJobs.get(i);
             if (!job.process.isAlive()) {
                 String marker = getJobMarker(i);
                 String displayCommand = stripTrailingAmpersand(job.commandLine);
                 out.println(formatJobLine(job.jobNumber, marker, "Done", displayCommand));
                 backgroundJobs.remove(i);
-                i--;
+            } else {
+                i++;
             }
         }
         out.flush();
+    }
+
+    private static void reapCompletedJobsSilently() {
+        for (int i = 0; i < backgroundJobs.size(); ) {
+            if (!backgroundJobs.get(i).process.isAlive()) {
+                backgroundJobs.remove(i);
+            } else {
+                i++;
+            }
+        }
     }
 
     private static String formatJobLine(int jobNumber, String marker, String status, String commandLine) {
