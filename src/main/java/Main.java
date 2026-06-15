@@ -118,22 +118,32 @@ class Shell {
         Iterator<BackgroundJob> iterator = backgroundJobs.iterator();
         while (iterator.hasNext()) {
             BackgroundJob job = iterator.next();
-            if (!job.process.isAlive()) {
+            if (!job.process.isAlive() && !job.notifiedDone) {
                 String marker = getJobMarker(job);
                 System.out.printf("[%d]%s  %-23s %s%n",
                         job.jobNumber,
                         marker,
                         "Done",
                         job.commandWithoutAmpersand);
-                iterator.remove();
+                job.notifiedDone = true;
             }
         }
     }
 
     private String getJobMarker(BackgroundJob targetJob) {
-        int size = backgroundJobs.size();
-        int index = backgroundJobs.indexOf(targetJob);
+        List<BackgroundJob> active = new ArrayList<>();
+        for (BackgroundJob job : backgroundJobs) {
+            if (!job.reapedFromJobsList) {
+                active.add(job);
+            }
+        }
 
+        int size = active.size();
+        int index = active.indexOf(targetJob);
+
+        if (index == -1) {
+            return " ";
+        }
         if (size == 1) {
             return "+";
         }
@@ -333,15 +343,26 @@ class Shell {
     }
 
     private void handleJobs() {
-        for (BackgroundJob job : backgroundJobs) {
+        Iterator<BackgroundJob> iterator = backgroundJobs.iterator();
+        while (iterator.hasNext()) {
+            BackgroundJob job = iterator.next();
+
             String marker = getJobMarker(job);
             String status = job.process.isAlive() ? "Running" : "Done";
+            String commandText = job.process.isAlive()
+                    ? job.commandWithAmpersand
+                    : job.commandWithoutAmpersand;
 
             System.out.printf("[%d]%s  %-23s %s%n",
                     job.jobNumber,
                     marker,
                     status,
-                    job.commandWithAmpersand);
+                    commandText);
+
+            if (!job.process.isAlive()) {
+                job.reapedFromJobsList = true;
+                iterator.remove();
+            }
         }
     }
 
@@ -482,6 +503,8 @@ class Shell {
         final Process process;
         final String commandWithoutAmpersand;
         final String commandWithAmpersand;
+        boolean notifiedDone = false;
+        boolean reapedFromJobsList = false;
 
         BackgroundJob(int jobNumber, Process process, String commandWithoutAmpersand, String commandWithAmpersand) {
             this.jobNumber = jobNumber;
