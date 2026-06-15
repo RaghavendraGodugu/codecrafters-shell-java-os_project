@@ -18,6 +18,7 @@ public class Main {
         try {
             Runtime.getRuntime().exec(cmd).waitFor();
         } catch (Exception e) {
+            // Ignore if tty is unavailable
         }
 
         InputStream inputReader = System.in;
@@ -40,10 +41,11 @@ public class Main {
 
                     if (c == '\n' || c == '\r') {
                         System.out.print("\n");
+                        System.out.flush();
                         break;
                     } else if (c == '\t') {
                         handleTabCompletion(inputBuilder);
-                    } else if (code == 127) { // backspace
+                    } else if (code == 127) {
                         if (inputBuilder.length() > 0) {
                             inputBuilder.deleteCharAt(inputBuilder.length() - 1);
                             System.out.print("\b \b");
@@ -64,27 +66,24 @@ public class Main {
                 List<String> parts = tokenize(input);
                 String command = parts.get(0);
 
-                if (command.equals("exit")) {
-                    int codeToExit = 0;
-                    if (parts.size() > 1) {
-                        try {
-                            codeToExit = Integer.parseInt(parts.get(1));
-                        } catch (NumberFormatException e) {
-                            codeToExit = 0;
-                        }
+                if ("exit".equals(command)) {
+                    if (parts.size() > 1 && "0".equals(parts.get(1))) {
+                        return;
                     }
                     return;
-                } else if (command.equals("echo")) {
+                } else if ("echo".equals(command)) {
                     for (int i = 1; i < parts.size(); i++) {
-                        if (i > 1) System.out.print(" ");
+                        if (i > 1) {
+                            System.out.print(" ");
+                        }
                         System.out.print(parts.get(i));
                     }
                     System.out.println();
-                } else if (command.equals("pwd")) {
+                } else if ("pwd".equals(command)) {
                     System.out.println(currentDirectory);
-                } else if (command.equals("cd")) {
+                } else if ("cd".equals(command)) {
                     handleCd(parts);
-                } else if (command.equals("type")) {
+                } else if ("type".equals(command)) {
                     handleType(parts);
                 } else {
                     runExternal(parts);
@@ -101,6 +100,7 @@ public class Main {
         String prefix = lastSpace == -1 ? currentInput : currentInput.substring(lastSpace + 1);
 
         if (prefix.isEmpty()) {
+            ringBell();
             return;
         }
 
@@ -108,19 +108,26 @@ public class Main {
 
         if (matches.size() == 1) {
             String match = matches.get(0);
-            String completion = match + " ";
             String beforeToken = lastSpace == -1 ? "" : currentInput.substring(0, lastSpace + 1);
+            String completed = beforeToken + match + " ";
 
             for (int i = 0; i < prefix.length(); i++) {
                 System.out.print("\b \b");
             }
 
             inputBuilder.setLength(0);
-            inputBuilder.append(beforeToken).append(completion);
+            inputBuilder.append(completed);
 
-            System.out.print(completion);
+            System.out.print(match + " ");
             System.out.flush();
+        } else if (matches.isEmpty()) {
+            ringBell();
         }
+    }
+
+    private static void ringBell() {
+        System.out.print("\u0007");
+        System.out.flush();
     }
 
     private static List<String> findMatches(String prefix) {
@@ -134,8 +141,9 @@ public class Main {
 
         String pathEnv = System.getenv("PATH");
         if (pathEnv != null && !pathEnv.isEmpty()) {
-            String[] dirs = pathEnv.split(File.pathSeparator);
-            for (String dir : dirs) {
+            String[] directories = pathEnv.split(File.pathSeparator);
+
+            for (String dir : directories) {
                 File folder = new File(dir);
                 if (!folder.exists() || !folder.isDirectory()) {
                     continue;
@@ -147,7 +155,7 @@ public class Main {
                 }
 
                 for (File file : files) {
-                    if (file.getName().startsWith(prefix) && file.isFile() && file.canExecute()) {
+                    if (file.isFile() && file.canExecute() && file.getName().startsWith(prefix)) {
                         matches.add(file.getName());
                     }
                 }
@@ -159,7 +167,7 @@ public class Main {
 
     private static void handleCd(List<String> parts) {
         String target;
-        if (parts.size() < 2 || parts.get(1).equals("~")) {
+        if (parts.size() < 2 || "~".equals(parts.get(1))) {
             target = System.getProperty("user.home");
         } else if (parts.get(1).startsWith("~/")) {
             target = System.getProperty("user.home") + parts.get(1).substring(1);
@@ -192,9 +200,9 @@ public class Main {
             return;
         }
 
-        String path = findExecutable(target);
-        if (path != null) {
-            System.out.println(target + " is " + path);
+        String executablePath = findExecutable(target);
+        if (executablePath != null) {
+            System.out.println(target + " is " + executablePath);
         } else {
             System.out.println(target + ": not found");
         }
@@ -206,22 +214,24 @@ public class Main {
             return null;
         }
 
-        String[] dirs = pathEnv.split(File.pathSeparator);
-        for (String dir : dirs) {
+        String[] directories = pathEnv.split(File.pathSeparator);
+        for (String dir : directories) {
             File file = new File(dir, command);
             if (file.exists() && file.isFile() && file.canExecute()) {
                 return file.getAbsolutePath();
             }
         }
+
         return null;
     }
 
     private static void runExternal(List<String> parts) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(parts);
-            pb.directory(currentDirectory.toFile());
-            pb.inheritIO();
-            Process process = pb.start();
+            ProcessBuilder processBuilder = new ProcessBuilder(parts);
+            processBuilder.directory(currentDirectory.toFile());
+            processBuilder.inheritIO();
+
+            Process process = processBuilder.start();
             process.waitFor();
         } catch (Exception e) {
             System.out.println(parts.get(0) + ": command not found");
