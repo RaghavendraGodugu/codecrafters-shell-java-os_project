@@ -1,3 +1,4 @@
+import java.io.File;
 import java.util.Scanner;
 
 public class Main {
@@ -26,11 +27,31 @@ public class Main {
             else if (input.startsWith("type ")) {
                 String commandToCheck = input.substring(5).trim();
                 
-                // Check if the given command is one of our builtins
+                // Check if it's a shell builtin
                 if (commandToCheck.equals("echo") || commandToCheck.equals("exit") || commandToCheck.equals("type")) {
                     System.out.println(commandToCheck + " is a shell builtin");
                 } else {
-                    System.out.println(commandToCheck + ": not found");
+                    // Check PATH environment variable for external executables
+                    String pathEnv = System.getenv("PATH");
+                    boolean found = false;
+
+                    if (pathEnv != null) {
+                        // Split path based on OS-specific separator (: for Unix, ; for Windows)
+                        String[] directories = pathEnv.split(File.pathSeparator);
+                        
+                        for (String dir : directories) {
+                            File file = new File(dir, commandToCheck);
+                            if (file.exists() && file.canExecute()) {
+                                System.out.println(commandToCheck + " is " + file.getAbsolutePath());
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!found) {
+                        System.out.println(commandToCheck + ": not found");
+                    }
                 }
             }
             // 4. Handle unknown commands
