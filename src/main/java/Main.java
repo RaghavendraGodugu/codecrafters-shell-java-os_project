@@ -36,10 +36,11 @@ public class Main {
             String redirectFile = null;
             int redirectIndex = -1;
             boolean isStderrRedirection = false; 
-            boolean appendMode = false; // Flag to handle overwriting (false) vs appending (true)
+            boolean appendMode = false; 
 
             for (int i = 0; i < argsList.size(); i++) {
                 String arg = argsList.get(i);
+                
                 // Check for overwrite operators
                 if (arg.equals(">") || arg.equals("1>") || arg.equals("2>")) {
                     if (i + 1 < argsList.size()) {
@@ -50,12 +51,12 @@ public class Main {
                         break;
                     }
                 }
-                // Check for append operators (NEW)
-                else if (arg.equals(">>") || arg.equals("1>>")) {
+                // Check for append operators (Updated to include 2>>)
+                else if (arg.equals(">>") || arg.equals("1>>") || arg.equals("2>>")) {
                     if (i + 1 < argsList.size()) {
                         redirectFile = argsList.get(i + 1);
                         redirectIndex = i;
-                        isStderrRedirection = false;
+                        isStderrRedirection = arg.equals("2>>");
                         appendMode = true; 
                         break;
                     }
@@ -79,7 +80,6 @@ public class Main {
                         targetFile.getParentFile().mkdirs();
                     }
                     
-                    // Passing appendMode here allows file appending dynamically when >> is used
                     fileOutStream = new PrintStream(new FileOutputStream(targetFile, appendMode)); 
                     
                     if (isStderrRedirection) {
