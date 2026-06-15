@@ -14,9 +14,9 @@ public class Main {
 
             String input = scanner.nextLine();
             
-            // Check if the user wants to exit the shell
-            if (input.equals("exit 0")) {
-                break; // Breaks the loop and terminates the program gracefully
+            // Check if the command starts with "exit"
+            if (input.startsWith("exit")) {
+                break; // Breaks the loop and terminates the program cleanly
             }
             
             // If it's not a known command, print the error
