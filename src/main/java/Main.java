@@ -36,24 +36,30 @@ public class Main {
             else if (input.equals("pwd")) {
                 System.out.println(currentDirectory.toString());
             }
-            // 4. Handle cd command (Absolute & Relative Paths)
+            // 4. Handle cd command (Absolute, Relative, and Home Paths)
             else if (input.startsWith("cd ")) {
                 String targetPathStr = input.substring(3).trim();
                 Path targetPath;
 
-                if (targetPathStr.startsWith("/")) {
-                    // It's an absolute path
+                if (targetPathStr.equals("~")) {
+                    // Fetch the home directory path from environment variables
+                    String homeDir = System.getenv("HOME");
+                    if (homeDir == null) {
+                        // Fallback for Windows environments testing locally
+                        homeDir = System.getenv("USERPROFILE");
+                    }
+                    targetPath = Paths.get(homeDir);
+                } else if (targetPathStr.startsWith("/")) {
+                    // Absolute path
                     targetPath = Paths.get(targetPathStr);
                 } else {
-                    // It's a relative path -> resolve it against our current directory position
+                    // Relative path
                     targetPath = currentDirectory.resolve(targetPathStr);
                 }
 
-                // .normalize() resolves structural shortcut tokens like "." and ".."
                 targetPath = targetPath.normalize().toAbsolutePath();
                 File targetDir = targetPath.toFile();
 
-                // Verify if the resolved path exists and is a valid directory
                 if (targetDir.exists() && targetDir.isDirectory()) {
                     currentDirectory = targetPath;
                 } else {
