@@ -25,7 +25,7 @@ public class Main {
                 continue;
             }
 
-            // Parse the input handling single quotes properly
+            // Parse the input handling single and double quotes properly
             List<String> argsList = parseArguments(input);
             if (argsList.isEmpty()) {
                 continue;
@@ -118,21 +118,27 @@ public class Main {
         scanner.close();
     }
 
-    // New Helper method to cleanly parse arguments with single quote tracking
+    // Upgraded parsing method to handle both single and double quotes
     private static List<String> parseArguments(String input) {
         List<String> list = new ArrayList<>();
         StringBuilder currentArg = new StringBuilder();
         boolean inSingleQuotes = false;
-        boolean hasContent = false; // Tracks if we've accumulated anything for the current arg
+        boolean inDoubleQuotes = false;
+        boolean hasContent = false; 
 
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            if (c == '\'') {
+            if (c == '\'' && !inDoubleQuotes) {
+                // Toggle single quotes state only if we aren't wrapped in double quotes
                 inSingleQuotes = !inSingleQuotes;
-                hasContent = true; // Handles empty quotes '' safely as valid empty content
-            } else if (c == ' ' && !inSingleQuotes) {
-                // If we encounter a space outside quotes, complete the current token
+                hasContent = true; 
+            } else if (c == '"' && !inSingleQuotes) {
+                // Toggle double quotes state only if we aren't wrapped in single quotes
+                inDoubleQuotes = !inDoubleQuotes;
+                hasContent = true;
+            } else if (c == ' ' && !inSingleQuotes && !inDoubleQuotes) {
+                // Space acts as an argument divider only when completely unquoted
                 if (hasContent || currentArg.length() > 0) {
                     list.add(currentArg.toString());
                     currentArg.setLength(0);
@@ -144,7 +150,6 @@ public class Main {
             }
         }
 
-        // Add the final token if anything remains
         if (hasContent || currentArg.length() > 0) {
             list.add(currentArg.toString());
         }
