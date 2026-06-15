@@ -4,6 +4,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -135,7 +136,13 @@ public class Main {
                         }
                     }
 
-                    List<String> scriptCandidates = runCompleterScript(scriptPath, commandName, currentWord, previousWord);
+                    List<String> scriptCandidates = runCompleterScript(
+                            scriptPath,
+                            commandName,
+                            currentWord,
+                            previousWord,
+                            currentInput
+                    );
 
                     if (scriptCandidates.isEmpty()) {
                         ringBell();
@@ -228,13 +235,23 @@ public class Main {
         }
     }
 
-    private static List<String> runCompleterScript(String scriptPath, String commandName, String currentWord, String previousWord) {
+    private static List<String> runCompleterScript(
+            String scriptPath,
+            String commandName,
+            String currentWord,
+            String previousWord,
+            String fullCommandLine
+    ) {
         List<String> candidates = new ArrayList<>();
 
         try {
             ProcessBuilder pb = new ProcessBuilder(scriptPath, commandName, currentWord, previousWord);
             pb.directory(currentDirectory.toFile());
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+
+            Map<String, String> env = pb.environment();
+            env.put("COMP_LINE", fullCommandLine);
+            env.put("COMP_POINT", String.valueOf(fullCommandLine.getBytes(StandardCharsets.UTF_8).length));
 
             Process process = pb.start();
 
