@@ -11,6 +11,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -512,18 +513,51 @@ public class Main {
         ensureBuiltinStderrTargetExists(parsed);
         PrintStream out = getStdoutStream(parsed);
 
+        List<BackgroundJob> doneJobs = new ArrayList<>();
+
         for (int i = 0; i < backgroundJobs.size(); i++) {
             BackgroundJob job = backgroundJobs.get(i);
+
+            if (!job.process.isAlive()) {
+                try {
+                    job.process.exitValue();
+                    job.status = "Done";
+                } catch (IllegalThreadStateException ignored) {
+                    job.status = "Running";
+                }
+            } else {
+                job.status = "Running";
+            }
+
             String marker = getJobMarker(i);
             String statusField = String.format("%-24s", job.status);
+            String commandToShow = "Done".equals(job.status)
+                    ? removeTrailingAmpersand(job.commandLine)
+                    : job.commandLine;
 
-            out.println("[" + job.jobNumber + "] " + marker + " " + statusField + job.commandLine);
+            out.println("[" + job.jobNumber + "] " + marker + " " + statusField + commandToShow);
+
+            if ("Done".equals(job.status)) {
+                doneJobs.add(job);
+            }
+        }
+
+        for (BackgroundJob doneJob : doneJobs) {
+            backgroundJobs.remove(doneJob);
         }
 
         out.flush();
         if (out != System.out) {
             out.close();
         }
+    }
+
+    private static String removeTrailingAmpersand(String commandLine) {
+        String trimmed = commandLine.trim();
+        if (trimmed.endsWith("&")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+        }
+        return trimmed;
     }
 
     private static String getJobMarker(int index) {
