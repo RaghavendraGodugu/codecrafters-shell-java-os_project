@@ -150,6 +150,13 @@ public class Main {
                         return;
                     }
 
+                    String lcp = longestCommonPrefixStrings(scriptCandidates);
+                    if (lcp.length() > currentWord.length()) {
+                        applyCompletion(inputBuilder, currentInput, lastSpace, prefix, lcp);
+                        resetTabState();
+                        return;
+                    }
+
                     if (currentInput.equals(lastTabInput) && scriptCandidates.equals(lastTabDisplayOptions)) {
                         System.out.print("\n");
                         for (int i = 0; i < scriptCandidates.size(); i++) {
@@ -288,6 +295,26 @@ public class Main {
         String prefix = matches.get(0).value;
         for (int i = 1; i < matches.size(); i++) {
             String current = matches.get(i).value;
+            int j = 0;
+            while (j < prefix.length() && j < current.length() && prefix.charAt(j) == current.charAt(j)) {
+                j++;
+            }
+            prefix = prefix.substring(0, j);
+            if (prefix.isEmpty()) {
+                break;
+            }
+        }
+        return prefix;
+    }
+
+    private static String longestCommonPrefixStrings(List<String> values) {
+        if (values.isEmpty()) {
+            return "";
+        }
+
+        String prefix = values.get(0);
+        for (int i = 1; i < values.size(); i++) {
+            String current = values.get(i);
             int j = 0;
             while (j < prefix.length() && j < current.length() && prefix.charAt(j) == current.charAt(j)) {
                 j++;
