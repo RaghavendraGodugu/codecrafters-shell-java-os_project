@@ -59,8 +59,8 @@ public class Main {
                     }
                 }
 
-                String input = inputBuilder.toString().trim();
-                if (input.isEmpty()) {
+                String input = inputBuilder.toString();
+                if (input.trim().isEmpty()) {
                     continue;
                 }
 
@@ -379,7 +379,55 @@ public class Main {
     }
 
     private static List<String> tokenize(String input) {
-        return new ArrayList<>(Arrays.asList(input.split("\\s+")));
+        List<String> tokens = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+        boolean escaping = false;
+
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+
+            if (escaping) {
+                current.append(ch);
+                escaping = false;
+                continue;
+            }
+
+            if (ch == '\\' && !inSingleQuote) {
+                escaping = true;
+                continue;
+            }
+
+            if (ch == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+                continue;
+            }
+
+            if (ch == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+                continue;
+            }
+
+            if (Character.isWhitespace(ch) && !inSingleQuote && !inDoubleQuote) {
+                if (current.length() > 0) {
+                    tokens.add(current.toString());
+                    current.setLength(0);
+                }
+            } else {
+                current.append(ch);
+            }
+        }
+
+        if (escaping) {
+            current.append('\\');
+        }
+
+        if (current.length() > 0) {
+            tokens.add(current.toString());
+        }
+
+        return tokens;
     }
 
     private static class ParsedCommand {
