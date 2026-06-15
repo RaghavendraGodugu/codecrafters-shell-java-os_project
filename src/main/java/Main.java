@@ -1,5 +1,7 @@
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -30,10 +32,47 @@ public class Main {
                 continue;
             }
 
+            // --- Redirection Parsing Logic ---
+            String redirectFile = null;
+            int redirectIndex = -1;
+
+            for (int i = 0; i < argsList.size(); i++) {
+                String arg = argsList.get(i);
+                if (arg.equals(">") || arg.equals("1>")) {
+                    if (i + 1 < argsList.size()) {
+                        redirectFile = argsList.get(i + 1);
+                        redirectIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // Save original stdout so we can restore it for the next loop iteration
+            PrintStream originalOut = System.out;
+            PrintStream fileOutStream = null;
+
+            if (redirectIndex != -1) {
+                try {
+                    File file = new File(currentDirectory.toFile(), redirectFile);
+                    // Ensure parent directories exist
+                    if (file.getParentFile() != null) {
+                        file.getParentFile().mkdirs();
+                    }
+                    fileOutStream = new PrintStream(new FileOutputStream(file, false)); // false = overwrite
+                    System.setOut(fileOutStream);
+                } catch (IOException e) {
+                    System.err.println("Shell error: Redirection target could not be opened.");
+                }
+                
+                // Strip out the redirection operators and filename from the arguments passed to builtins
+                argsList = new ArrayList<>(argsList.subList(0, redirectIndex));
+            }
+
             String command = argsList.get(0);
 
             // 1. Handle exit command
             if (command.equals("exit")) {
+                if (fileOutStream != null) fileOutStream.close();
                 break;
             } 
             // 2. Handle echo command
@@ -95,14 +134,23 @@ public class Main {
                     }
                 }
             }
-            // 6. Try running it as an external program (like cat)
+            // 6. Try running it as an external program
             else {
                 String executablePath = findInPath(command);
                 if (executablePath != null) {
                     try {
                         ProcessBuilder pb = new ProcessBuilder(argsList);
                         pb.directory(currentDirectory.toFile());
-                        pb.inheritIO();
+                        
+                        if (redirectIndex != -1) {
+                            // Let ProcessBuilder handle file writing redirection internally
+                            File file = new File(currentDirectory.toFile(), redirectFile);
+                            pb.redirectOutput(file);
+                            pb.redirectError(ProcessBuilder.Redirect.INHERIT); // Keep errors on console
+                        } else {
+                            pb.inheritIO();
+                        }
+
                         Process process = pb.start();
                         process.waitFor();
                     } catch (IOException | InterruptedException e) {
@@ -112,6 +160,12 @@ public class Main {
                     System.out.println(command + ": command not found");
                 }
             }
+
+            // Cleanup & Restore stream tracking states for our shell interface prompt loop
+            if (fileOutStream != null) {
+                fileOutStream.close();
+            }
+            System.setOut(originalOut);
         }
         
         scanner.close();
@@ -127,7 +181,6 @@ public class Main {
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
 
-            // Case 1: Backslash outside of any quotes
             if (c == '\\' && !inSingleQuotes && !inDoubleQuotes) {
                 if (i + 1 < input.length()) {
                     i++; 
@@ -135,16 +188,13 @@ public class Main {
                     hasContent = true;
                 }
             } 
-            // Case 2: Backslash inside double quotes
             else if (c == '\\' && inDoubleQuotes) {
                 if (i + 1 < input.length()) {
                     char next = input.charAt(i + 1);
-                    // Only escape if followed by structural double-quote characters
                     if (next == '"' || next == '\\' || next == '$' || next == '`') {
-                        i++; // Consume the backslash by jumping over it
+                        i++; 
                         currentArg.append(next);
                     } else {
-                        // Otherwise, treat the backslash literally
                         currentArg.append(c);
                     }
                     hasContent = true;
