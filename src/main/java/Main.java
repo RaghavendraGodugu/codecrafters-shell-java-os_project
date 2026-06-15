@@ -121,13 +121,12 @@ public class Main {
 
                 if (scriptPath != null) {
                     String currentWord = currentInput.endsWith(" ") ? "" : prefix;
-                    String thirdArg = "";
 
                     List<String> scriptCandidates = runCompleterScript(
                             scriptPath,
                             commandName,
                             currentWord,
-                            thirdArg,
+                            commandName,
                             currentInput
                     );
 
@@ -215,20 +214,15 @@ public class Main {
 
     private static List<String> runCompleterScript(
             String scriptPath,
-            String commandName,
-            String currentWord,
-            String thirdArg,
+            String arg1,
+            String arg2,
+            String arg3,
             String fullCommandLine
     ) {
         List<String> candidates = new ArrayList<>();
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    scriptPath,
-                    commandName,
-                    currentWord,
-                    thirdArg
-            );
+            ProcessBuilder pb = new ProcessBuilder(scriptPath, arg1, arg2, arg3);
             pb.directory(currentDirectory.toFile());
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
 
