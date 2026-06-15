@@ -333,10 +333,24 @@ public class Main {
 
     private static void executeComplete(ParsedCommand parsed) throws Exception {
         ensureBuiltinStderrTargetExists(parsed);
+
         PrintStream out = getStdoutStream(parsed);
-        out.flush();
-        if (out != System.out) {
-            out.close();
+        PrintStream err = getStderrStream(parsed);
+
+        try {
+            if (parsed.args.size() >= 3 && "-p".equals(parsed.args.get(1))) {
+                String commandName = parsed.args.get(2);
+                err.println("complete: " + commandName + ": no completion specification");
+                err.flush();
+            }
+            out.flush();
+        } finally {
+            if (out != System.out) {
+                out.close();
+            }
+            if (err != System.err) {
+                err.close();
+            }
         }
     }
 
