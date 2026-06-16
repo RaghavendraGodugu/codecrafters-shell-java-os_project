@@ -347,8 +347,8 @@ public class Main {
                 if (redirectStdout != null) outFp.close();
                 if (redirectStderr != null) errFp.close();
 
-            } catch (IOException | InterruptedException e) {
-                System.err.println("I/O Error: " + e.getMessage());
+            } catch (IOException e) {
+    System.err.println("I/O Error: " + e.getMessage());
             }
         }
     }
