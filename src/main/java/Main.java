@@ -48,14 +48,6 @@ public class Main {
         }
     }
 
-    static void reapJobs() {
-        for (Job job : jobsList) {
-            if (!job.proc.isAlive()) {
-                job.status = "Done";
-            }
-        }
-    }
-
     static String findPath(String cmdName) {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return null;
@@ -107,6 +99,7 @@ public class Main {
 
     static ShellProcess executeCommand(List<String> args, OutputStream outFp, OutputStream errFp, InputStream inFd) {
         String cmd = args.get(0);
+
         PrintWriter out = new PrintWriter(new OutputStreamWriter(outFp), true);
         PrintWriter err = new PrintWriter(new OutputStreamWriter(errFp), true);
 
@@ -136,6 +129,31 @@ public class Main {
                     err.println("cd: " + args.get(1) + ": No such file or directory");
                 }
             }
+        } else if (cmd.equals("jobs")) {
+            int totalJobs = jobsList.size();
+            List<Job> remaining = new ArrayList<>();
+
+            for (int i = 0; i < totalJobs; i++) {
+                Job job = jobsList.get(i);
+
+                if (!job.proc.isAlive()) {
+                    job.status = "Done";
+                }
+
+                String marker = " ";
+                if (i == totalJobs - 1) marker = "+";
+                else if (i == totalJobs - 2) marker = "-";
+
+                String status = String.format("%-24s", job.status);
+                out.println("[" + job.id + "]" + marker + "  " + status + job.cmd);
+
+                if (job.status.equals("Running")) {
+                    remaining.add(job);
+                }
+            }
+
+            jobsList.clear();
+            jobsList.addAll(remaining);
         } else {
             try {
                 ProcessBuilder pb = new ProcessBuilder(args);
@@ -171,7 +189,11 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
-            reapJobs();
+            for (Job job : jobsList) {
+                if (!job.proc.isAlive()) {
+                    job.status = "Done";
+                }
+            }
 
             System.out.print("$ ");
             System.out.flush();
@@ -186,6 +208,8 @@ public class Main {
             if (command.isEmpty()) continue;
 
             List<String> parsedArgs = parseArguments(command);
+
+            if (parsedArgs.isEmpty()) continue;
 
             boolean runInBackground = false;
             if (parsedArgs.get(parsedArgs.size() - 1).equals("&")) {
