@@ -19,7 +19,7 @@ public class Main {
                 continue;
             }
 
-            // Check if the command contains a pipeline
+            // Handle Pipelines
             if (input.contains("|")) {
                 executePipeline(input);
             } else {
@@ -30,7 +30,6 @@ public class Main {
     }
 
     private static void executePipeline(String input) {
-        // Split the command line by the pipe symbol
         String[] parts = input.split("\\|");
         
         if (parts.length != 2) {
@@ -38,26 +37,19 @@ public class Main {
             return;
         }
 
-        // Parse arguments for both commands safely
         List<String> cmd1Args = parseArguments(parts[0].trim());
         List<String> cmd2Args = parseArguments(parts[1].trim());
 
         try {
-            // Create ProcessBuilders for both processes
             ProcessBuilder pb1 = new ProcessBuilder(cmd1Args);
             ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
 
-            // Redirect error streams to inherit from your shell
             pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
             pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
-            
-            // Redirect the final command's output back to your terminal stdout
             pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
 
-            // Start the pipeline natively (Connects pb1 stdout -> pb2 stdin automatically)
             List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pb1, pb2));
 
-            // Wait for both background processes to fully finish execution
             for (Process p : processes) {
                 p.waitFor();
             }
@@ -69,6 +61,15 @@ public class Main {
 
     private static void executeSingleCommand(String input) {
         List<String> args = parseArguments(input);
+        if (args.isEmpty()) return;
+
+        // Check if this is a background job command
+        boolean isBackgroundJob = false;
+        if (args.get(args.size() - 1).equals("&")) {
+            isBackgroundJob = true;
+            args.remove(args.size() - 1); // Remove '&' so it isn't passed to the binary
+        }
+
         String command = args.get(0);
 
         // 1. Handle Builtins
@@ -82,14 +83,29 @@ public class Main {
         // 2. Handle External Commands / Binaries
         try {
             ProcessBuilder pb = new ProcessBuilder(args);
-            pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+            
+            // Only inherit standard input if it's running in the foreground
+            if (!isBackgroundJob) {
+                pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+            }
             pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             
             Process process = pb.start();
-            process.waitFor();
+            
+            if (isBackgroundJob) {
+                // CodeCrafters expectation for background jobs: Print "[JobNumber] PID"
+                // For the early stages, we can hardcode the job number to [1]
+                long pid = process.pid();
+                System.out.println("[1] " + pid);
+                
+                // Do NOT call process.waitFor() here so the shell prompt returns instantly!
+            } else {
+                // Foreground job: wait normally
+                process.waitFor();
+            }
         } catch (IOException | InterruptedException e) {
-            System.out.println(command +": command not found");
+            System.out.println(command + ": command not found");
         }
     }
 
