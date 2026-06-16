@@ -1,12 +1,16 @@
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 public class Main {
-    // Keep track of the next background job number dynamically
     private static int nextJobNumber = 1;
+    
+    // Tracks active background jobs: Job ID -> Command String
+    private static final Map<Integer, String> activeJobs = new LinkedHashMap<>();
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -66,13 +70,6 @@ public class Main {
         List<String> args = parseArguments(input);
         if (args.isEmpty()) return;
 
-        // Check if this is a background job command
-        boolean isBackgroundJob = false;
-        if (args.get(args.size() - 1).equals("&")) {
-            isBackgroundJob = true;
-            args.remove(args.size() - 1); // Remove '&' so it isn't passed to the binary
-        }
-
         String command = args.get(0);
 
         // 1. Handle Builtins
@@ -81,13 +78,26 @@ public class Main {
         } else if (command.equals("echo")) {
             System.out.println(String.join(" ", args.subList(1, args.size())));
             return;
+        } else if (command.equals("jobs")) {
+            // Handle the 'jobs' builtin command explicitly
+            for (Map.Entry<Integer, String> entry : activeJobs.entrySet()) {
+                // Formatting matches: "[1]-  Running                 sleep 500 &"
+                System.out.printf("[%d]-  Running                 %s\n", entry.getKey(), entry.getValue());
+            }
+            return;
         }
         
+        // Check if this is a background job command
+        boolean isBackgroundJob = false;
+        if (args.get(args.size() - 1).equals("&")) {
+            isBackgroundJob = true;
+            args.remove(args.size() - 1); // Remove '&' so it isn't passed to the binary
+        }
+
         // 2. Handle External Commands / Binaries
         try {
             ProcessBuilder pb = new ProcessBuilder(args);
             
-            // Only inherit standard input if it's running in the foreground
             if (!isBackgroundJob) {
                 pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
             }
@@ -97,14 +107,17 @@ public class Main {
             Process process = pb.start();
             
             if (isBackgroundJob) {
-                // Dynamically print the current job number and then increment it
                 long pid = process.pid();
-                System.out.println("[" + nextJobNumber + "] " + pid);
-                nextJobNumber++;
+                int currentJobId = nextJobNumber;
                 
-                // Do NOT call process.waitFor() so the shell prompt returns instantly!
+                System.out.println("[" + currentJobId + "] " + pid);
+                
+                // Store the command context in our active jobs map
+                String fullJobCommand = String.join(" ", args) + " &";
+                activeJobs.put(currentJobId, fullJobCommand);
+                
+                nextJobNumber++;
             } else {
-                // Foreground job: wait normally
                 process.waitFor();
             }
         } catch (IOException | InterruptedException e) {
