@@ -17,7 +17,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -28,6 +30,11 @@ public class Main {
     private static Path pwd = Paths.get(System.getProperty("user.dir"));
     private static String lastAmbiguousPrefix = null;
     private static List<String> lastAmbiguousMatches = new ArrayList<String>();
+
+    // Background job management state trackers
+    private static int nextJobNumber = 1;
+    private static final Map<Integer, Process> activeProcesses = new LinkedHashMap<>();
+    private static final Map<Integer, String> activeCommands = new LinkedHashMap<>();
 
     public static void main(String[] args) throws Exception {
         Terminal terminal = TerminalBuilder.builder().system(true).build();
@@ -41,10 +48,13 @@ public class Main {
         configureTabCompletion(lineReader);
 
         while (true) {
+            // CRITICAL STEP: Automatically reap dead jobs right before showing the prompt
+            reapFinishedJobs();
+            
             resetTabState();
             String line = lineReader.readLine(PROMPT);
             if (line != null && !line.isEmpty()) {
-                if (line.indexOf('|') >= 0) {
+                if (line.contains("|")) {
                     runPipeline(line);
                 } else {
                     Command command = parse(line);
@@ -204,10 +214,47 @@ public class Main {
     }
 
     private static void runPipeline(String line) throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder("sh", "-c", line);
-        pb.inheritIO();
-        Process p = pb.start();
-        p.waitFor();
+        String[] segments = line.split("\\|");
+        if (segments.length != 2) {
+            System.out.println("Error: Only dual-command pipelines are supported.");
+            return;
+        }
+
+        List<String> cmd1Args = splitCommand(segments[0].trim());
+        List<String> cmd2Args = splitCommand(segments[1].trim());
+
+        ProcessBuilder pb1 = new ProcessBuilder(cmd1Args);
+        ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
+
+        pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
+        pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
+        pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+
+        List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pb1, pb2));
+
+        for (Process p : processes) {
+            p.waitFor();
+        }
+    }
+
+    private static void reapFinishedJobs() {
+        List<Integer> finishedJobIds = new ArrayList<>();
+
+        // Loop over open descriptors to spot exited jobs
+        for (Map.Entry<Integer, Process> entry : activeProcesses.entrySet()) {
+            if (!entry.getValue().isAlive()) {
+                finishedJobIds.add(entry.getKey());
+            }
+        }
+
+        // Print Done statement explicitly and evict from state
+        for (Integer id : finishedJobIds) {
+            String originalCommand = activeCommands.get(id);
+            // Match structural format: "[1]-  Done                    sleep 5 &"
+            System.out.printf("[%d]-  Done                    %s\n", id, originalCommand);
+            activeProcesses.remove(id);
+            activeCommands.remove(id);
+        }
     }
 
     enum CommandName {
@@ -215,7 +262,8 @@ public class Main {
         echo,
         type,
         pwd,
-        cd;
+        cd,
+        jobs; // Integrated jobs builtin context
 
         static CommandName of(String name) {
             try {
@@ -232,6 +280,7 @@ public class Main {
         final String[] commandWithArgs;
         final RedirectType redirectType;
         final String redirectTo;
+        boolean isBackground = false;
 
         Command(
                 String command,
@@ -279,19 +328,30 @@ public class Main {
             throw new IllegalArgumentException("command cannot be empty");
         }
 
-        String[] splitArray = split.toArray(new String[0]);
-
-        if (splitArray.length == 1) {
-            return new Command(split.get(0), new String[0], splitArray, null, "");
+        // Detect if background worker indicator exists
+        boolean background = false;
+        if (split.get(split.size() - 1).equals("&")) {
+            background = true;
+            split.remove(split.size() - 1); // Strip it out so it's not sent to runtime binaries
         }
 
-        Redirect redirect = getRedirect(splitArray);
-        int redirectAt = redirect.redirectAt;
-        String[] args = Arrays.copyOfRange(splitArray, 1, redirectAt);
-        String[] commandWithArgs = Arrays.copyOf(splitArray, redirectAt);
-        String redirectTo = redirect.redirectType != null ? splitArray[redirectAt + 1] : "";
+        String[] splitArray = split.toArray(new String[0]);
 
-        return new Command(split.get(0), args, commandWithArgs, redirect.redirectType, redirectTo);
+        Command cmdObj;
+        if (splitArray.length == 1) {
+            cmdObj = new Command(split.get(0), new String[0], splitArray, null, "");
+        } else {
+            Redirect redirect = getRedirect(splitArray);
+            int redirectAt = redirect.redirectAt;
+            String[] args = Arrays.copyOfRange(splitArray, 1, redirectAt);
+            String[] commandWithArgs = Arrays.copyOf(splitArray, redirectAt);
+            String redirectTo = redirect.redirectType != null ? splitArray[redirectAt + 1] : "";
+
+            cmdObj = new Command(split.get(0), args, commandWithArgs, redirect.redirectType, redirectTo);
+        }
+        
+        cmdObj.isBackground = background;
+        return cmdObj;
     }
 
     private static Redirect getRedirect(String[] split) {
@@ -415,6 +475,12 @@ public class Main {
             case cd:
                 runCd(command);
                 break;
+            case jobs:
+                // Execute the jobs listing builtin cleanly
+                for (Map.Entry<Integer, String> entry : activeCommands.entrySet()) {
+                    System.out.printf("[%d]-  Running                 %s\n", entry.getKey(), entry.getValue());
+                }
+                break;
         }
     }
 
@@ -483,6 +549,12 @@ public class Main {
         String executable = findExecutable(command.command);
         if (executable != null) {
             ProcessBuilder processBuilder = new ProcessBuilder(command.commandWithArgs);
+            
+            // Background workers drop standard inputs to prevent command execution blocking loops
+            if (!command.isBackground) {
+                processBuilder.redirectInput(ProcessBuilder.Redirect.INHERIT);
+            }
+            
             RedirectType redirectType = command.redirectType;
             if (redirectType != null) {
                 File file = Paths.get(command.redirectTo).toFile();
@@ -505,37 +577,30 @@ public class Main {
                         break;
                 }
             } else {
-                processBuilder.inheritIO();
+                processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
             }
+
             Process process = processBuilder.start();
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
+            
+            if (command.isBackground) {
+                long pid = process.pid();
+                int currentJobId = nextJobNumber;
+                
+                // CodeCrafters format expectation: print '[1] 10637' immediately
+                System.out.println("[" + currentJobId + "] " + pid);
+                
+                String reconstructedCmd = String.join(" ", command.commandWithArgs) + " &";
+                activeProcesses.put(currentJobId, process);
+                activeCommands.put(currentJobId, reconstructedCmd);
+                
+                nextJobNumber++;
+            } else {
+                process.waitFor();
             }
         } else {
             String error = String.format("%s: command not found", command.command);
             System.out.println(error);
-        }
-    }
-
-    private static void runType(Command command) {
-        if (command.args.length == 0) {
-            System.out.println("type command requires an argument");
-            return;
-        }
-        String arg0 = command.args[0];
-        CommandName toType = CommandName.of(arg0);
-        if (toType == null) {
-            String executable = findExecutable(arg0);
-            if (executable != null) {
-                String message = String.format("%s is %s", arg0, executable);
-                System.out.println(message);
-            } else {
-                String error = String.format("%s: not found", arg0);
-                System.out.println(error);
-            }
-        } else {
-            String message = String.format("%s is a shell builtin", toType);
-            System.out.println(message);
         }
     }
 
