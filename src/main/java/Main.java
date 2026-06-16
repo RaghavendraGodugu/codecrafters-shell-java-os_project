@@ -9,13 +9,18 @@ import java.util.Scanner;
 public class Main {
     private static int nextJobNumber = 1;
     
-    // Tracks active background jobs: Job ID -> Command String
-    private static final Map<Integer, String> activeJobs = new LinkedHashMap<>();
+    // Tracks active background jobs: Job ID -> Process Object
+    private static final Map<Integer, Process> activeProcesses = new LinkedHashMap<>();
+    // Tracks background job command strings: Job ID -> Original Command String
+    private static final Map<Integer, String> activeCommands = new LinkedHashMap<>();
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
+            // CRITICAL STEP: Reap any finished background processes before showing the prompt
+            reapFinishedJobs();
+
             System.out.print("$ ");
             if (!scanner.hasNextLine()) {
                 break;
@@ -34,6 +39,24 @@ public class Main {
             }
         }
         scanner.close();
+    }
+
+    private static void reapFinishedJobs() {
+        // Use a list to collect IDs of processes that have finished executing
+        List<Integer> finishedJobIds = new ArrayList<>();
+
+        for (Map.Entry<Integer, Process> entry : activeProcesses.entrySet()) {
+            // isAlive() returns false if the OS process has terminated
+            if (!entry.getValue().isAlive()) {
+                finishedJobIds.add(entry.getKey());
+            }
+        }
+
+        // Remove the finished jobs from our registries
+        for (Integer id : finishedJobIds) {
+            activeProcesses.remove(id);
+            activeCommands.remove(id);
+        }
     }
 
     private static void executePipeline(String input) {
@@ -79,9 +102,8 @@ public class Main {
             System.out.println(String.join(" ", args.subList(1, args.size())));
             return;
         } else if (command.equals("jobs")) {
-            // Handle the 'jobs' builtin command explicitly
-            for (Map.Entry<Integer, String> entry : activeJobs.entrySet()) {
-                // Formatting matches: "[1]-  Running                 sleep 500 &"
+            // Show only background jobs that are actively running
+            for (Map.Entry<Integer, String> entry : activeCommands.entrySet()) {
                 System.out.printf("[%d]-  Running                 %s\n", entry.getKey(), entry.getValue());
             }
             return;
@@ -112,9 +134,10 @@ public class Main {
                 
                 System.out.println("[" + currentJobId + "] " + pid);
                 
-                // Store the command context in our active jobs map
+                // Track both the process runtime status and the command text string
                 String fullJobCommand = String.join(" ", args) + " &";
-                activeJobs.put(currentJobId, fullJobCommand);
+                activeProcesses.put(currentJobId, process);
+                activeCommands.put(currentJobId, fullJobCommand);
                 
                 nextJobNumber++;
             } else {
