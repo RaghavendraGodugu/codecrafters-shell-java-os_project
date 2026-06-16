@@ -70,24 +70,19 @@ public class Main {
         String firstCmdName = cmd1Args.get(0);
         CommandName builtIn1 = CommandName.of(firstCmdName);
 
-        // Scenario A: First command is a shell built-in (e.g., echo apple-orange | wc)
         if (builtIn1 != null) {
-            // Capture standard out of the built-in into a byte buffer
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             PrintStream originalOut = System.out;
             System.setOut(new PrintStream(baos));
 
             try {
-                // Execute built-in command natively
                 String[] remainingArgs = cmd1Args.subList(1, cmd1Args.size()).toArray(new String[0]);
                 Command mockBuiltIn = new Command(firstCmdName, remainingArgs, cmd1Args.toArray(new String[0]), null, "");
                 run(mockBuiltIn);
-            } finally {
-                // Restore standard console output immediately
+            } finaly {
                 System.setOut(originalOut);
             }
 
-            // Pipe data forward to the second external command
             ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
             pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
             pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
@@ -98,9 +93,7 @@ public class Main {
                 os.flush();
             }
             p2.waitFor();
-        } 
-        // Scenario B: Both commands are external binaries
-        else {
+        } else {
             ProcessBuilder pb1 = new ProcessBuilder(cmd1Args);
             ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
 
@@ -124,9 +117,19 @@ public class Main {
             }
         }
 
+        // Determine what the current (+) job would be before deleting finished ones
+        int maxJobId = -1;
+        for (Integer id : activeProcesses.keySet()) {
+            if (id > maxJobId) {
+                maxJobId = id;
+            }
+        }
+
         for (Integer id : finishedJobIds) {
             String originalCommand = activeCommands.get(id);
-            System.out.printf("[%d]-  Done                    %s\n", id, originalCommand);
+            // Matches the standard termination prefix format expected by the system
+            char sign = (id == maxJobId) ? '+' : '-';
+            System.out.printf("[%d]%c  Done                    %s\n", id, sign, originalCommand);
             activeProcesses.remove(id);
             activeCommands.remove(id);
         }
@@ -336,8 +339,18 @@ public class Main {
                 runCd(command);
                 break;
             case jobs:
+                // Find the highest active job ID to flag with '+'
+                int maxJobId = -1;
+                for (Integer id : activeCommands.keySet()) {
+                    if (id > maxJobId) {
+                        maxJobId = id;
+                    }
+                }
+
                 for (Map.Entry<Integer, String> entry : activeCommands.entrySet()) {
-                    System.out.printf("[%d]-  Running                 %s\n", entry.getKey(), entry.getValue());
+                    int id = entry.getKey();
+                    char sign = (id == maxJobId) ? '+' : '-';
+                    System.out.printf("[%d]%c  Running                 %s\n", id, sign, entry.getValue());
                 }
                 break;
         }
