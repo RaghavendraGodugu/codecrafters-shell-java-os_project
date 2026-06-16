@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.Scanner;
 
 public class Main {
+    // Keep track of the next background job number dynamically
+    private static int nextJobNumber = 1;
+
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
@@ -94,12 +97,12 @@ public class Main {
             Process process = pb.start();
             
             if (isBackgroundJob) {
-                // CodeCrafters expectation for background jobs: Print "[JobNumber] PID"
-                // For the early stages, we can hardcode the job number to [1]
+                // Dynamically print the current job number and then increment it
                 long pid = process.pid();
-                System.out.println("[1] " + pid);
+                System.out.println("[" + nextJobNumber + "] " + pid);
+                nextJobNumber++;
                 
-                // Do NOT call process.waitFor() here so the shell prompt returns instantly!
+                // Do NOT call process.waitFor() so the shell prompt returns instantly!
             } else {
                 // Foreground job: wait normally
                 process.waitFor();
@@ -110,7 +113,6 @@ public class Main {
     }
 
     private static List<String> parseArguments(String commandSection) {
-        // Splitting by whitespace to separate executable and flags
         return new ArrayList<>(Arrays.asList(commandSection.split("\\s+")));
     }
 }
