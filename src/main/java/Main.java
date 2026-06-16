@@ -1,11 +1,3 @@
-import org.jline.keymap.KeyMap;
-import org.jline.reader.LineReader;
-import org.jline.reader.LineReaderBuilder;
-import org.jline.reader.Reference;
-import org.jline.reader.impl.DefaultParser;
-import org.jline.terminal.Terminal;
-import org.jline.terminal.TerminalBuilder;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -21,15 +13,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Scanner;
 import java.util.Set;
 
 public class Main {
     private static final String HOME = "~";
     private static final String PATH = "PATH";
-    private static final String PROMPT = "$ ";
     private static Path pwd = Paths.get(System.getProperty("user.dir"));
-    private static String lastAmbiguousPrefix = null;
-    private static List<String> lastAmbiguousMatches = new ArrayList<String>();
 
     // Background job management state trackers
     private static int nextJobNumber = 1;
@@ -37,180 +27,30 @@ public class Main {
     private static final Map<Integer, String> activeCommands = new LinkedHashMap<>();
 
     public static void main(String[] args) throws Exception {
-        Terminal terminal = TerminalBuilder.builder().system(true).build();
-        DefaultParser parser = new DefaultParser();
-        parser.setEscapeChars(new char[0]);
-        LineReader lineReader =
-                LineReaderBuilder.builder()
-                        .terminal(terminal)
-                        .parser(parser)
-                        .build();
-        configureTabCompletion(lineReader);
+        Scanner scanner = new Scanner(System.in);
 
         while (true) {
-            // CRITICAL STEP: Automatically reap dead jobs right before showing the prompt
+            // Automatically reap dead jobs right before showing the next prompt
             reapFinishedJobs();
             
-            resetTabState();
-            String line = lineReader.readLine(PROMPT);
-            if (line != null && !line.isEmpty()) {
-                if (line.contains("|")) {
-                    runPipeline(line);
-                } else {
-                    Command command = parse(line);
-                    run(command);
-                }
-            }
-        }
-    }
-
-    private static void configureTabCompletion(LineReader lineReader) {
-        KeyMap mainKeyMap = lineReader.getKeyMaps().get(LineReader.MAIN);
-        mainKeyMap.bind(new Reference("my-complete"), "\t");
-        lineReader.getWidgets().put(
-                "my-complete",
-                () -> {
-                    handleTab(lineReader);
-                    return true;
-                });
-    }
-
-    private static void resetTabState() {
-        lastAmbiguousPrefix = null;
-        lastAmbiguousMatches = new ArrayList<String>();
-    }
-
-    private static void handleTab(LineReader lineReader) {
-        String buffer = lineReader.getBuffer().toString();
-        int cursor = lineReader.getBuffer().cursor();
-        if (cursor != buffer.length()) {
-            return;
-        }
-        String prefix = buffer;
-        if (prefix.length() == 0) {
-            beep(lineReader);
-            resetTabState();
-            return;
-        }
-
-        List<String> matches = getCommandCompletions(prefix);
-        if (matches.isEmpty()) {
-            beep(lineReader);
-            resetTabState();
-            return;
-        }
-
-        if (matches.size() == 1) {
-            String candidate = matches.get(0);
-            String newBuffer = candidate + " ";
-            lineReader.getBuffer().clear();
-            lineReader.getBuffer().write(newBuffer);
-            resetTabState();
-            return;
-        }
-
-        String lcp = longestCommonPrefix(matches);
-        if (lcp.length() > prefix.length()) {
-            lineReader.getBuffer().clear();
-            lineReader.getBuffer().write(lcp);
-            resetTabState();
-            return;
-        }
-
-        if (prefix.equals(lastAmbiguousPrefix) && matches.equals(lastAmbiguousMatches)) {
-            String list = joinWithDoubleSpace(matches);
-            var writer = lineReader.getTerminal().writer();
-            writer.write(System.lineSeparator());
-            writer.write(list);
-            writer.write(System.lineSeparator());
-            writer.write(PROMPT);
-            writer.write(prefix);
-            writer.flush();
-            resetTabState();
-            return;
-        }
-
-        beep(lineReader);
-        lastAmbiguousPrefix = prefix;
-        lastAmbiguousMatches = matches;
-    }
-
-    private static void beep(LineReader lineReader) {
-        lineReader.getTerminal().writer().write("\007");
-        lineReader.getTerminal().writer().flush();
-    }
-
-    private static List<String> getCommandCompletions(String prefix) {
-        List<String> result = new ArrayList<String>();
-        Set<String> seen = new HashSet<String>();
-
-        for (CommandName name : CommandName.values()) {
-            String cmd = name.name();
-            if (cmd.startsWith(prefix)) {
-                result.add(cmd);
-                seen.add(cmd);
-            }
-        }
-
-        String pathEnv = System.getenv(PATH);
-        if (pathEnv != null && !pathEnv.isEmpty()) {
-            String[] directories = pathEnv.split(System.getProperty("path.separator"));
-            for (String dir : directories) {
-                if (dir == null || dir.isEmpty()) {
-                    continue;
-                }
-                Path dirPath = Paths.get(dir);
-                if (!Files.isDirectory(dirPath)) {
-                    continue;
-                }
-                try (DirectoryStream<Path> stream = Files.newDirectoryStream(dirPath)) {
-                    for (Path p : stream) {
-                        if (Files.isRegularFile(p) && Files.isExecutable(p)) {
-                            String name = p.getFileName().toString();
-                            if (name.startsWith(prefix) && !seen.contains(name)) {
-                                result.add(name);
-                                seen.add(name);
-                            }
-                        }
-                    }
-                } catch (IOException e) {
-                }
-            }
-        }
-
-        Collections.sort(result);
-        return result;
-    }
-
-    private static String longestCommonPrefix(List<String> strings) {
-        if (strings.isEmpty()) {
-            return "";
-        }
-        String prefix = strings.get(0);
-        for (int i = 1; i < strings.size(); i++) {
-            String s = strings.get(i);
-            int j = 0;
-            int max = Math.min(prefix.length(), s.length());
-            while (j < max && prefix.charAt(j) == s.charAt(j)) {
-                j++;
-            }
-            prefix = prefix.substring(0, j);
-            if (prefix.isEmpty()) {
+            System.out.print("$ ");
+            if (!scanner.hasNextLine()) {
                 break;
             }
-        }
-        return prefix;
-    }
 
-    private static String joinWithDoubleSpace(List<String> items) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < items.size(); i++) {
-            if (i > 0) {
-                sb.append("  ");
+            String line = scanner.nextLine().trim();
+            if (line.isEmpty()) {
+                continue;
             }
-            sb.append(items.get(i));
+
+            if (line.contains("|")) {
+                runPipeline(line);
+            } else {
+                Command command = parse(line);
+                run(command);
+            }
         }
-        return sb.toString();
+        scanner.close();
     }
 
     private static void runPipeline(String line) throws IOException, InterruptedException {
@@ -240,17 +80,14 @@ public class Main {
     private static void reapFinishedJobs() {
         List<Integer> finishedJobIds = new ArrayList<>();
 
-        // Loop over open descriptors to spot exited jobs
         for (Map.Entry<Integer, Process> entry : activeProcesses.entrySet()) {
             if (!entry.getValue().isAlive()) {
                 finishedJobIds.add(entry.getKey());
             }
         }
 
-        // Print Done statement explicitly and evict from state
         for (Integer id : finishedJobIds) {
             String originalCommand = activeCommands.get(id);
-            // Match structural format: "[1]-  Done                    sleep 5 &"
             System.out.printf("[%d]-  Done                    %s\n", id, originalCommand);
             activeProcesses.remove(id);
             activeCommands.remove(id);
@@ -263,7 +100,7 @@ public class Main {
         type,
         pwd,
         cd,
-        jobs; // Integrated jobs builtin context
+        jobs;
 
         static CommandName of(String name) {
             try {
@@ -328,11 +165,10 @@ public class Main {
             throw new IllegalArgumentException("command cannot be empty");
         }
 
-        // Detect if background worker indicator exists
         boolean background = false;
         if (split.get(split.size() - 1).equals("&")) {
             background = true;
-            split.remove(split.size() - 1); // Strip it out so it's not sent to runtime binaries
+            split.remove(split.size() - 1);
         }
 
         String[] splitArray = split.toArray(new String[0]);
@@ -476,7 +312,6 @@ public class Main {
                 runCd(command);
                 break;
             case jobs:
-                // Execute the jobs listing builtin cleanly
                 for (Map.Entry<Integer, String> entry : activeCommands.entrySet()) {
                     System.out.printf("[%d]-  Running                 %s\n", entry.getKey(), entry.getValue());
                 }
@@ -491,18 +326,10 @@ public class Main {
             switch (command.redirectType) {
                 case stdout:
                     byte[] bytes = String.format("%s%n", message).getBytes();
-                    Files.write(
-                            path,
-                            bytes,
-                            StandardOpenOption.CREATE,
-                            StandardOpenOption.TRUNCATE_EXISTING);
+                    Files.write(path, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                     break;
                 case stderr:
-                    Files.write(
-                            path,
-                            new byte[0],
-                            StandardOpenOption.CREATE,
-                            StandardOpenOption.TRUNCATE_EXISTING);
+                    Files.write(path, new byte[0], StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                     System.out.println(message);
                     break;
                 case stdout_append:
@@ -510,11 +337,7 @@ public class Main {
                     Files.write(path, bytes2, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
                     break;
                 case stderr_append:
-                    Files.write(
-                            path,
-                            new byte[0],
-                            StandardOpenOption.CREATE,
-                            StandardOpenOption.APPEND);
+                    Files.write(path, new byte[0], StandardOpenOption.CREATE, StandardOpenOption.APPEND);
                     System.out.println(message);
                     break;
             }
@@ -545,12 +368,30 @@ public class Main {
         }
     }
 
+    private static void runType(Command command) {
+        if (command.args.length == 0) {
+            System.out.println("type command requires an argument");
+            return;
+        }
+        String arg0 = command.args[0];
+        CommandName toType = CommandName.of(arg0);
+        if (toType == null) {
+            String executable = findExecutable(arg0);
+            if (executable != null) {
+                System.out.printf("%s is %s\n", arg0, executable);
+            } else {
+                System.out.printf("%s: not found\n", arg0);
+            }
+        } else {
+            System.out.printf("%s is a shell builtin\n", toType);
+        }
+    }
+
     private static void runNotBuiltin(Command command) throws IOException, InterruptedException {
         String executable = findExecutable(command.command);
         if (executable != null) {
             ProcessBuilder processBuilder = new ProcessBuilder(command.commandWithArgs);
             
-            // Background workers drop standard inputs to prevent command execution blocking loops
             if (!command.isBackground) {
                 processBuilder.redirectInput(ProcessBuilder.Redirect.INHERIT);
             }
@@ -587,7 +428,6 @@ public class Main {
                 long pid = process.pid();
                 int currentJobId = nextJobNumber;
                 
-                // CodeCrafters format expectation: print '[1] 10637' immediately
                 System.out.println("[" + currentJobId + "] " + pid);
                 
                 String reconstructedCmd = String.join(" ", command.commandWithArgs) + " &";
@@ -620,7 +460,6 @@ public class Main {
                 return filePath.toAbsolutePath().toString();
             }
         }
-
         return null;
     }
 }
