@@ -1,5 +1,9 @@
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +25,6 @@ public class Main {
     private static final String PATH = "PATH";
     private static Path pwd = Paths.get(System.getProperty("user.dir"));
 
-    // Background job management state trackers
     private static int nextJobNumber = 1;
     private static final Map<Integer, Process> activeProcesses = new LinkedHashMap<>();
     private static final Map<Integer, String> activeCommands = new LinkedHashMap<>();
@@ -30,7 +33,6 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
-            // Automatically reap dead jobs right before showing the next prompt
             reapFinishedJobs();
             
             System.out.print("$ ");
@@ -63,17 +65,53 @@ public class Main {
         List<String> cmd1Args = splitCommand(segments[0].trim());
         List<String> cmd2Args = splitCommand(segments[1].trim());
 
-        ProcessBuilder pb1 = new ProcessBuilder(cmd1Args);
-        ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
+        if (cmd1Args.isEmpty() || cmd2Args.isEmpty()) return;
 
-        pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
-        pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
-        pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+        String firstCmdName = cmd1Args.get(0);
+        CommandName builtIn1 = CommandName.of(firstCmdName);
 
-        List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pb1, pb2));
+        // Scenario A: First command is a shell built-in (e.g., echo apple-orange | wc)
+        if (builtIn1 != null) {
+            // Capture standard out of the built-in into a byte buffer
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            PrintStream originalOut = System.out;
+            System.setOut(new PrintStream(baos));
 
-        for (Process p : processes) {
-            p.waitFor();
+            try {
+                // Execute built-in command natively
+                String[] remainingArgs = cmd1Args.subList(1, cmd1Args.size()).toArray(new String[0]);
+                Command mockBuiltIn = new Command(firstCmdName, remainingArgs, cmd1Args.toArray(new String[0]), null, "");
+                run(mockBuiltIn);
+            } finally {
+                // Restore standard console output immediately
+                System.setOut(originalOut);
+            }
+
+            // Pipe data forward to the second external command
+            ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
+            pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
+            pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+
+            Process p2 = pb2.start();
+            try (OutputStream os = p2.getOutputStream()) {
+                os.write(baos.toByteArray());
+                os.flush();
+            }
+            p2.waitFor();
+        } 
+        // Scenario B: Both commands are external binaries
+        else {
+            ProcessBuilder pb1 = new ProcessBuilder(cmd1Args);
+            ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
+
+            pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
+            pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
+            pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+
+            List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pb1, pb2));
+            for (Process p : processes) {
+                p.waitFor();
+            }
         }
     }
 
@@ -95,12 +133,7 @@ public class Main {
     }
 
     enum CommandName {
-        exit,
-        echo,
-        type,
-        pwd,
-        cd,
-        jobs;
+        exit, echo, type, pwd, cd, jobs;
 
         static CommandName of(String name) {
             try {
@@ -119,12 +152,7 @@ public class Main {
         final String redirectTo;
         boolean isBackground = false;
 
-        Command(
-                String command,
-                String[] args,
-                String[] commandWithArgs,
-                RedirectType redirectType,
-                String redirectTo) {
+        Command(String command, String[] args, String[] commandWithArgs, RedirectType redirectType, String redirectTo) {
             this.command = command;
             this.args = args;
             this.commandWithArgs = commandWithArgs;
@@ -144,15 +172,11 @@ public class Main {
     }
 
     private enum RedirectType {
-        stdout,
-        stderr,
-        stdout_append,
-        stderr_append
+        stdout, stderr, stdout_append, stderr_append
     }
 
     private enum QuteMode {
-        singleQuote,
-        doubleQuote
+        singleQuote, doubleQuote
     }
 
     private static Command parse(String command) {
