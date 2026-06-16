@@ -2,50 +2,62 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Scanner;
 
-public class ShellPipelineHandler {
+public class Main {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
 
-    public static void handleCommandLine(String input) {
-        // 1. Check if the input contains a pipeline operator
-        if (input.contains("|")) {
-            executePipeline(input);
-        } else {
-            // Your existing logic for single commands / builtins
-            executeSingleCommand(input);
+        while (true) {
+            System.out.print("$ ");
+            if (!scanner.hasNextLine()) {
+                break;
+            }
+            
+            String input = scanner.nextLine().trim();
+            if (input.isEmpty()) {
+                continue;
+            }
+
+            // Check if the command contains a pipeline
+            if (input.contains("|")) {
+                executePipeline(input);
+            } else {
+                executeSingleCommand(input);
+            }
         }
+        scanner.close();
     }
 
     private static void executePipeline(String input) {
-        // 2. Split the command line by the pipe symbol
-        // Note: This is a basic split; a robust shell would handle '|' inside quotes.
+        // Split the command line by the pipe symbol
         String[] parts = input.split("\\|");
         
         if (parts.length != 2) {
-            System.out.println("Error: Only dual-command pipelines are supported in this stage.");
+            System.out.println("Error: Only dual-command pipelines are supported.");
             return;
         }
 
-        // 3. Parse arguments for both commands
+        // Parse arguments for both commands safely
         List<String> cmd1Args = parseArguments(parts[0].trim());
         List<String> cmd2Args = parseArguments(parts[1].trim());
 
         try {
-            // 4. Create ProcessBuilders for both commands
+            // Create ProcessBuilders for both processes
             ProcessBuilder pb1 = new ProcessBuilder(cmd1Args);
             ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
 
-            // Inherit the environment and error streams if necessary
+            // Redirect error streams to inherit from your shell
             pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
             pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
             
-            // Explicitly route the final command's output back to the shell's stdout
+            // Redirect the final command's output back to your terminal stdout
             pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
 
-            // 5. Start the pipeline
-            // startPipeline handles connecting pb1's stdout into pb2's stdin automatically
+            // Start the pipeline natively (Connects pb1 stdout -> pb2 stdin automatically)
             List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pb1, pb2));
 
-            // 6. Wait for both processes to complete
+            // Wait for both background processes to fully finish execution
             for (Process p : processes) {
                 p.waitFor();
             }
@@ -55,12 +67,34 @@ public class ShellPipelineHandler {
         }
     }
 
-    private static List<String> parseArguments(String commandSection) {
-        // Simple whitespace splitter (expand this if you already implemented quoting support)
-        return new ArrayList<>(Arrays.asList(commandSection.split("\\s+")));
+    private static void executeSingleCommand(String input) {
+        List<String> args = parseArguments(input);
+        String command = args.get(0);
+
+        // 1. Handle Builtins
+        if (command.equals("exit")) {
+            System.exit(0);
+        } else if (command.equals("echo")) {
+            System.out.println(String.join(" ", args.subList(1, args.size())));
+            return;
+        }
+        
+        // 2. Handle External Commands / Binaries
+        try {
+            ProcessBuilder pb = new ProcessBuilder(args);
+            pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+            
+            Process process = pb.start();
+            process.waitFor();
+        } catch (IOException | InterruptedException e) {
+            System.out.println(command +": command not found");
+        }
     }
 
-    private static void executeSingleCommand(String input) {
-        // Your existing single command / binary execution logic goes here
+    private static List<String> parseArguments(String commandSection) {
+        // Splitting by whitespace to separate executable and flags
+        return new ArrayList<>(Arrays.asList(commandSection.split("\\s+")));
     }
 }
