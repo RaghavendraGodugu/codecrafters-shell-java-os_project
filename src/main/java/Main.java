@@ -19,6 +19,7 @@ public class Main {
             this.status = "Running";
         }
     }
+
     static class ShellProcess {
         Process proc;
         Thread outThread;
@@ -47,6 +48,14 @@ public class Main {
         }
     }
 
+    static void reapJobs() {
+        for (Job job : jobsList) {
+            if (!job.proc.isAlive()) {
+                job.status = "Done";
+            }
+        }
+    }
+
     static String findPath(String cmdName) {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return null;
@@ -69,16 +78,9 @@ public class Main {
 
         for (int i = 0; i < cmdArg.length(); i++) {
             char c = cmdArg.charAt(i);
+
             if (isEscaping) {
-                if (inDoubleQuotes) {
-                    if (c == '"' || c == '\\' || c == '$' || c == '`' || c == '\n') {
-                        currentArg.append(c);
-                    } else {
-                        currentArg.append('\\').append(c);
-                    }
-                } else {
-                    currentArg.append(c);
-                }
+                currentArg.append(c);
                 isEscaping = false;
             } else if (c == '\\' && !inSingleQuotes) {
                 isEscaping = true;
@@ -95,16 +97,16 @@ public class Main {
                 currentArg.append(c);
             }
         }
+
         if (currentArg.length() > 0) {
             args.add(currentArg.toString());
         }
+
         return args;
     }
 
     static ShellProcess executeCommand(List<String> args, OutputStream outFp, OutputStream errFp, InputStream inFd) {
         String cmd = args.get(0);
-        List<String> builtins = Arrays.asList("echo", "exit", "type", "pwd", "cd", "jobs");
-
         PrintWriter out = new PrintWriter(new OutputStreamWriter(outFp), true);
         PrintWriter err = new PrintWriter(new OutputStreamWriter(errFp), true);
 
@@ -112,20 +114,6 @@ public class Main {
             System.exit(0);
         } else if (cmd.equals("echo")) {
             out.println(String.join(" ", args.subList(1, args.size())));
-        } else if (cmd.equals("type")) {
-            if (args.size() > 1) {
-                String targetCommand = args.get(1);
-                if (builtins.contains(targetCommand)) {
-                    out.println(targetCommand + " is a shell builtin");
-                } else {
-                    String foundPath = findPath(targetCommand);
-                    if (foundPath != null) {
-                        out.println(targetCommand + " is " + foundPath);
-                    } else {
-                        out.println(targetCommand + ": not found");
-                    }
-                }
-            }
         } else if (cmd.equals("pwd")) {
             out.println(currentDir.getAbsolutePath());
         } else if (cmd.equals("cd")) {
@@ -148,69 +136,34 @@ public class Main {
                     err.println("cd: " + args.get(1) + ": No such file or directory");
                 }
             }
-        } else if (cmd.equals("jobs")) {
-            int totalJobs = jobsList.size();
-            List<Job> jobsToKeep = new ArrayList<>();
-            for (int i = 0; i < totalJobs; i++) {
-                Job job = jobsList.get(i);
-                if (!job.proc.isAlive()) {
-                    job.status = "Done";
-                    if (job.cmd.endsWith("&")) {
-                        job.cmd = job.cmd.substring(0, job.cmd.length() - 1).stripTrailing();
-                    }
-                }
-                String marker = " ";
-                if (i == totalJobs - 1) marker = "+";
-                else if (i == totalJobs - 2) marker = "-";
-
-                String statusPadded = String.format("%-24s", job.status);
-                out.println("[" + job.id + "]" + marker + "  " + statusPadded + job.cmd);
-
-                if (job.status.equals("Running")) {
-                    jobsToKeep.add(job);
-                }
-            }
-            jobsList.clear();
-            jobsList.addAll(jobsToKeep);
         } else {
-            String foundPath = findPath(cmd);
-            if (foundPath != null) {
-                try {
-                    ProcessBuilder pb = new ProcessBuilder(args);
-                    pb.directory(currentDir);
-                    Process proc = pb.start();
-                    if (inFd != null) {
-                        new Thread(() -> {
-                            try {
-                                inFd.transferTo(proc.getOutputStream());
-                                proc.getOutputStream().close();
-                            } catch (IOException ignored) {}
-                        }).start();
-                    }
-                    Thread outThread = new Thread(() -> {
-                        try {
-                            proc.getInputStream().transferTo(outFp);
-                            outFp.flush();
-                        } catch (IOException ignored) {}
-                    });
-                    outThread.start();
-                    Thread errThread = new Thread(() -> {
-                        try {
-                            proc.getErrorStream().transferTo(errFp);
-                            errFp.flush();
-                        } catch (IOException ignored) {}
-                    });
-                    errThread.start();
+            try {
+                ProcessBuilder pb = new ProcessBuilder(args);
+                pb.directory(currentDir);
+                Process proc = pb.start();
 
-                    return new ShellProcess(proc, outThread, errThread);
+                Thread outThread = new Thread(() -> {
+                    try {
+                        proc.getInputStream().transferTo(outFp);
+                    } catch (IOException ignored) {}
+                });
 
-                } catch (IOException e) {
-                    err.println(cmd + ": execution error - " + e.getMessage());
-                }
-            } else {
+                Thread errThread = new Thread(() -> {
+                    try {
+                        proc.getErrorStream().transferTo(errFp);
+                    } catch (IOException ignored) {}
+                });
+
+                outThread.start();
+                errThread.start();
+
+                return new ShellProcess(proc, outThread, errThread);
+
+            } catch (IOException e) {
                 err.println(cmd + ": command not found");
             }
         }
+
         return null;
     }
 
@@ -218,6 +171,8 @@ public class Main {
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
+            reapJobs();
+
             System.out.print("$ ");
             System.out.flush();
 
@@ -227,113 +182,23 @@ public class Main {
             } catch (NoSuchElementException e) {
                 break;
             }
+
             if (command.isEmpty()) continue;
 
             List<String> parsedArgs = parseArguments(command);
-            if (parsedArgs.isEmpty()) continue;
 
             boolean runInBackground = false;
             if (parsedArgs.get(parsedArgs.size() - 1).equals("&")) {
                 runInBackground = true;
                 parsedArgs.remove(parsedArgs.size() - 1);
-                if (parsedArgs.isEmpty()) continue;
-            }
-
-            String redirectStdout = null;
-            String redirectStderr = null;
-            boolean appendStdout = false;
-            boolean appendStderr = false;
-            int idx = parsedArgs.indexOf("2>>");
-            if (idx != -1) {
-                redirectStderr = parsedArgs.get(idx + 1);
-                appendStderr = true;
-                parsedArgs.remove(idx); parsedArgs.remove(idx);
-            } else if ((idx = parsedArgs.indexOf("2>")) != -1) {
-                redirectStderr = parsedArgs.get(idx + 1);
-                appendStderr = false;
-                parsedArgs.remove(idx); parsedArgs.remove(idx);
-            }
-            idx = parsedArgs.indexOf(">>");
-            if (idx != -1) {
-                redirectStdout = parsedArgs.get(idx + 1);
-                appendStdout = true;
-                parsedArgs.remove(idx); parsedArgs.remove(idx);
-            } else if ((idx = parsedArgs.indexOf("1>>")) != -1) {
-                redirectStdout = parsedArgs.get(idx + 1);
-                appendStdout = true;
-                parsedArgs.remove(idx); parsedArgs.remove(idx);
-            } else if ((idx = parsedArgs.indexOf(">")) != -1) {
-                redirectStdout = parsedArgs.get(idx + 1);
-                appendStdout = false;
-                parsedArgs.remove(idx); parsedArgs.remove(idx);
-            } else if ((idx = parsedArgs.indexOf("1>")) != -1) {
-                redirectStdout = parsedArgs.get(idx + 1);
-                appendStdout = false;
-                parsedArgs.remove(idx); parsedArgs.remove(idx);
             }
 
             try {
-                OutputStream outFp = redirectStdout != null ? new FileOutputStream(redirectStdout, appendStdout) : System.out;
-                OutputStream errFp = redirectStderr != null ? new FileOutputStream(redirectStderr, appendStderr) : System.err;
-
-                if (parsedArgs.contains("|")) {
-                    List<List<String>> commands = new ArrayList<>();
-                    List<String> currentCmd = new ArrayList<>();
-                    for (String arg : parsedArgs) {
-                        if (arg.equals("|")) {
-                            if (!currentCmd.isEmpty()) commands.add(currentCmd);
-                            currentCmd = new ArrayList<>();
-                        } else {
-                            currentCmd.add(arg);
-                        }
-                    }
-                    if (!currentCmd.isEmpty()) commands.add(currentCmd);
-
-                    List<ShellProcess> processes = new ArrayList<>();
-                    InputStream prevR = null;
-
-                    for (int i = 0; i < commands.size(); i++) {
-                        List<String> cmdArgs = commands.get(i);
-                        boolean isLast = (i == commands.size() - 1);
-
-                        OutputStream currentOut;
-                        InputStream nextPrevR = null;
-
-                        if (!isLast) {
-                            PipedOutputStream pos = new PipedOutputStream();
-                            PipedInputStream pis = new PipedInputStream(pos);
-                            currentOut = pos;
-                            nextPrevR = pis;
-                        } else {
-                            currentOut = outFp;
-                        }
-
-                        ShellProcess p = executeCommand(cmdArgs, currentOut, errFp, prevR);
-                        if (p != null) processes.add(p);
-
-                        if (!isLast) {
-                            currentOut.close(); 
-                        }
-                        if (prevR != null) {
-                            prevR.close();
-                        }
-                        if (!isLast) {
-                            prevR = nextPrevR;
-                        }
-                    }
-
-                    for (ShellProcess p : processes) {
-                        if (p != null) {
-                            p.waitForCompletion();
-                        }
-                    }
-
-                    if (redirectStdout != null) outFp.close();
-                    if (redirectStderr != null) errFp.close();
-                    continue;
-                }
+                OutputStream outFp = System.out;
+                OutputStream errFp = System.err;
 
                 ShellProcess proc = executeCommand(parsedArgs, outFp, errFp, null);
+
                 if (proc != null) {
                     if (runInBackground) {
                         System.out.println("[" + jobCounter + "] " + proc.pid);
@@ -344,11 +209,8 @@ public class Main {
                     }
                 }
 
-                if (redirectStdout != null) outFp.close();
-                if (redirectStderr != null) errFp.close();
-
-            } catch (IOException e) {
-    System.err.println("I/O Error: " + e.getMessage());
+            } catch (Exception e) {
+                System.err.println("I/O Error: " + e.getMessage());
             }
         }
     }
