@@ -48,56 +48,57 @@ public class Main {
         }
     }
 
+    static void reapJobs() {
+        for (Job job : jobsList) {
+            if (!job.proc.isAlive()) {
+                job.status = "Done";
+            }
+        }
+    }
+
     static String findPath(String cmdName) {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) return null;
         String[] paths = pathEnv.split(File.pathSeparator);
         for (String p : paths) {
             File f = new File(p, cmdName);
-            if (f.isFile() && f.canExecute()) {
-                return f.getAbsolutePath();
-            }
+            if (f.isFile() && f.canExecute()) return f.getAbsolutePath();
         }
         return null;
     }
 
     static List<String> parseArguments(String cmdArg) {
         List<String> args = new ArrayList<>();
-        StringBuilder currentArg = new StringBuilder();
-        boolean inSingleQuotes = false;
-        boolean inDoubleQuotes = false;
-        boolean isEscaping = false;
+        StringBuilder cur = new StringBuilder();
+        boolean sq = false, dq = false, esc = false;
 
         for (int i = 0; i < cmdArg.length(); i++) {
             char c = cmdArg.charAt(i);
 
-            if (isEscaping) {
-                currentArg.append(c);
-                isEscaping = false;
-            } else if (c == '\\' && !inSingleQuotes) {
-                isEscaping = true;
-            } else if (c == '\'' && !inDoubleQuotes) {
-                inSingleQuotes = !inSingleQuotes;
-            } else if (c == '"' && !inSingleQuotes) {
-                inDoubleQuotes = !inDoubleQuotes;
-            } else if (Character.isWhitespace(c) && !inSingleQuotes && !inDoubleQuotes) {
-                if (currentArg.length() > 0) {
-                    args.add(currentArg.toString());
-                    currentArg.setLength(0);
+            if (esc) {
+                cur.append(c);
+                esc = false;
+            } else if (c == '\\' && !sq) {
+                esc = true;
+            } else if (c == '\'' && !dq) {
+                sq = !sq;
+            } else if (c == '"' && !sq) {
+                dq = !dq;
+            } else if (Character.isWhitespace(c) && !sq && !dq) {
+                if (cur.length() > 0) {
+                    args.add(cur.toString());
+                    cur.setLength(0);
                 }
             } else {
-                currentArg.append(c);
+                cur.append(c);
             }
         }
 
-        if (currentArg.length() > 0) {
-            args.add(currentArg.toString());
-        }
-
+        if (cur.length() > 0) args.add(cur.toString());
         return args;
     }
 
-    static ShellProcess executeCommand(List<String> args, OutputStream outFp, OutputStream errFp, InputStream inFd) {
+    static ShellProcess executeCommand(List<String> args, OutputStream outFp, OutputStream errFp) {
         String cmd = args.get(0);
 
         PrintWriter out = new PrintWriter(new OutputStreamWriter(outFp), true);
@@ -111,17 +112,13 @@ public class Main {
             out.println(currentDir.getAbsolutePath());
         } else if (cmd.equals("cd")) {
             if (args.size() > 1) {
-                String directory = args.get(1);
-                if (directory.equals("~")) {
-                    directory = System.getProperty("user.home");
-                }
-                File newDir = new File(directory);
-                if (!newDir.isAbsolute()) {
-                    newDir = new File(currentDir, directory);
-                }
-                if (newDir.exists() && newDir.isDirectory()) {
+                String d = args.get(1);
+                if (d.equals("~")) d = System.getProperty("user.home");
+                File f = new File(d);
+                if (!f.isAbsolute()) f = new File(currentDir, d);
+                if (f.exists() && f.isDirectory()) {
                     try {
-                        currentDir = newDir.getCanonicalFile();
+                        currentDir = f.getCanonicalFile();
                     } catch (IOException e) {
                         err.println("cd: error resolving path");
                     }
@@ -130,52 +127,44 @@ public class Main {
                 }
             }
         } else if (cmd.equals("jobs")) {
-            int totalJobs = jobsList.size();
-            List<Job> remaining = new ArrayList<>();
+            int n = jobsList.size();
+            List<Job> keep = new ArrayList<>();
 
-            for (int i = 0; i < totalJobs; i++) {
-                Job job = jobsList.get(i);
+            for (int i = 0; i < n; i++) {
+                Job j = jobsList.get(i);
 
-                if (!job.proc.isAlive()) {
-                    job.status = "Done";
-                }
+                if (!j.proc.isAlive()) j.status = "Done";
 
-                String marker = " ";
-                if (i == totalJobs - 1) marker = "+";
-                else if (i == totalJobs - 2) marker = "-";
+                String mark = " ";
+                if (i == n - 1) mark = "+";
+                else if (i == n - 2) mark = "-";
 
-                String status = String.format("%-24s", job.status);
-                out.println("[" + job.id + "]" + marker + "  " + status + job.cmd);
+                out.println("[" + j.id + "]" + mark + "  " +
+                        String.format("%-24s", j.status) + j.cmd);
 
-                if (job.status.equals("Running")) {
-                    remaining.add(job);
-                }
+                if (j.status.equals("Running")) keep.add(j);
             }
 
-            jobsList.clear();
-            jobsList.addAll(remaining);
+            jobsList = keep;
+            return null;
         } else {
             try {
                 ProcessBuilder pb = new ProcessBuilder(args);
                 pb.directory(currentDir);
-                Process proc = pb.start();
+                Process p = pb.start();
 
-                Thread outThread = new Thread(() -> {
-                    try {
-                        proc.getInputStream().transferTo(outFp);
-                    } catch (IOException ignored) {}
+                Thread t1 = new Thread(() -> {
+                    try { p.getInputStream().transferTo(outFp); } catch (Exception ignored) {}
                 });
 
-                Thread errThread = new Thread(() -> {
-                    try {
-                        proc.getErrorStream().transferTo(errFp);
-                    } catch (IOException ignored) {}
+                Thread t2 = new Thread(() -> {
+                    try { p.getErrorStream().transferTo(errFp); } catch (Exception ignored) {}
                 });
 
-                outThread.start();
-                errThread.start();
+                t1.start();
+                t2.start();
 
-                return new ShellProcess(proc, outThread, errThread);
+                return new ShellProcess(p, t1, t2);
 
             } catch (IOException e) {
                 err.println(cmd + ": command not found");
@@ -186,55 +175,43 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
+        Scanner sc = new Scanner(System.in);
 
         while (true) {
-            for (Job job : jobsList) {
-                if (!job.proc.isAlive()) {
-                    job.status = "Done";
-                }
-            }
+            reapJobs();
 
             System.out.print("$ ");
             System.out.flush();
 
-            String command;
+            String line;
             try {
-                command = scanner.nextLine().trim();
-            } catch (NoSuchElementException e) {
+                line = sc.nextLine().trim();
+            } catch (Exception e) {
                 break;
             }
 
-            if (command.isEmpty()) continue;
+            if (line.isEmpty()) continue;
 
-            List<String> parsedArgs = parseArguments(command);
+            List<String> parsed = parseArguments(line);
+            if (parsed.isEmpty()) continue;
 
-            if (parsedArgs.isEmpty()) continue;
-
-            boolean runInBackground = false;
-            if (parsedArgs.get(parsedArgs.size() - 1).equals("&")) {
-                runInBackground = true;
-                parsedArgs.remove(parsedArgs.size() - 1);
+            boolean bg = false;
+            if (parsed.get(parsed.size() - 1).equals("&")) {
+                bg = true;
+                parsed.remove(parsed.size() - 1);
             }
 
-            try {
-                OutputStream outFp = System.out;
-                OutputStream errFp = System.err;
+            reapJobs();
 
-                ShellProcess proc = executeCommand(parsedArgs, outFp, errFp, null);
+            ShellProcess p = executeCommand(parsed, System.out, System.err);
 
-                if (proc != null) {
-                    if (runInBackground) {
-                        System.out.println("[" + jobCounter + "] " + proc.pid);
-                        jobsList.add(new Job(jobCounter, proc, command));
-                        jobCounter++;
-                    } else {
-                        proc.waitForCompletion();
-                    }
+            if (p != null) {
+                if (bg) {
+                    System.out.println("[" + jobCounter + "] " + p.pid);
+                    jobsList.add(new Job(jobCounter++, p, line));
+                } else {
+                    p.waitForCompletion();
                 }
-
-            } catch (Exception e) {
-                System.err.println("I/O Error: " + e.getMessage());
             }
         }
     }
