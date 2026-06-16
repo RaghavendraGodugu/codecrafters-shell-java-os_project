@@ -204,31 +204,24 @@ public class Main {
     }
 
     private static void runPipeline(String line) throws IOException, InterruptedException {
-        // Split the pipeline string into two distinct segments
         String[] segments = line.split("\\|");
         if (segments.length != 2) {
             System.out.println("Error: Only dual-command pipelines are supported.");
             return;
         }
 
-        // Leverage your existing string parsing mechanism to handle nested quotes correctly
         List<String> cmd1Args = splitCommand(segments[0].trim());
         List<String> cmd2Args = splitCommand(segments[1].trim());
 
         ProcessBuilder pb1 = new ProcessBuilder(cmd1Args);
         ProcessBuilder pb2 = new ProcessBuilder(cmd2Args);
 
-        // Standard error configuration
         pb1.redirectError(ProcessBuilder.Redirect.INHERIT);
         pb2.redirectError(ProcessBuilder.Redirect.INHERIT);
-        
-        // Pass stdout of the final command directly to your interactive console output
         pb2.redirectOutput(ProcessBuilder.Redirect.INHERIT);
 
-        // Native OS process pipeline connection setup
         List<Process> processes = ProcessBuilder.startPipeline(Arrays.asList(pb1, pb2));
 
-        // Sync execution flow until both pipe operations finish up entirely
         for (Process p : processes) {
             p.waitFor();
         }
