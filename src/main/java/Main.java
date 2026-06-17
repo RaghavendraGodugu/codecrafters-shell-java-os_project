@@ -1,6 +1,8 @@
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 public class Main {
@@ -22,6 +24,9 @@ public class Main {
     private static final List<Job> jobs = new ArrayList<>();
     private static int nextJobId = 1;
 
+    // command -> completer path
+    private static final Map<String, String> completions = new HashMap<>();
+
     public static void main(String[] args) throws Exception {
         Scanner sc = new Scanner(System.in);
         String currentDirectory = System.getProperty("user.dir");
@@ -30,6 +35,7 @@ public class Main {
             reapJobs(true);
             System.out.print("$ ");
 
+            if (!sc.hasNextLine()) break;
             String input = sc.nextLine();
             if (input == null || input.trim().isEmpty()) continue;
 
@@ -109,8 +115,12 @@ public class Main {
                     StringBuilder sb = new StringBuilder();
                     for (int k = 0; k < pad; k++) sb.append(' ');
 
-                    System.out.println("[" + j.id + "]" + marker + "  " + status + sb.toString() + j.command + suffix);
+                    System.out.println("[" + j.id + "]" + marker + "  " + status + sb + j.command + suffix);
                 }
+            }
+
+            else if (input.startsWith("complete")) {
+                handleComplete(input);
             }
 
             else {
@@ -161,7 +171,6 @@ public class Main {
                 ProcessBuilder pb = new ProcessBuilder(cmdParts);
                 pb.directory(new File(currentDirectory));
 
-                // Configure stdout redirection
                 if (outFile != null) {
                     File out = new File(outFile);
                     if (!out.isAbsolute()) out = new File(currentDirectory, outFile);
@@ -171,7 +180,6 @@ public class Main {
                     pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
                 }
 
-                // Configure stderr redirection
                 if (errFile != null) {
                     File err = new File(errFile);
                     if (!err.isAbsolute()) err = new File(currentDirectory, errFile);
@@ -197,20 +205,41 @@ public class Main {
         }
     }
 
+    private static void handleComplete(String input) {
+        List<String> parts = parse(input);
+
+        // complete -C /path/to/completer git
+        if (parts.size() == 4 && parts.get(1).equals("-C")) {
+            String completerPath = parts.get(2);
+            String command = parts.get(3);
+            completions.put(command, completerPath);
+            return;
+        }
+
+        // complete -r git
+        if (parts.size() == 3 && parts.get(1).equals("-r")) {
+            String command = parts.get(2);
+            completions.remove(command);
+            return;
+        }
+
+        // For now, ignore unsupported complete variants silently for this stage
+    }
+
     private static boolean isBuiltin(String cmd) {
         return cmd.equals("echo")
                 || cmd.equals("exit")
                 || cmd.equals("type")
                 || cmd.equals("pwd")
                 || cmd.equals("cd")
-                || cmd.equals("jobs");
+                || cmd.equals("jobs")
+                || cmd.equals("complete");
     }
 
     private static String findExecutable(String command, String currentDirectory) {
         String pathEnv = System.getenv("PATH");
         if (pathEnv == null) pathEnv = "";
 
-        // If the command looks like a path, resolve against shell currentDirectory
         File cmdFile = new File(command);
         if (!cmdFile.isAbsolute()) {
             cmdFile = new File(currentDirectory, command);
@@ -263,7 +292,7 @@ public class Main {
                     if (pad < 0) pad = 0;
                     StringBuilder sb = new StringBuilder();
                     for (int k = 0; k < pad; k++) sb.append(' ');
-                    System.out.println("[" + j.id + "]" + marker + "  " + status + sb.toString() + j.command);
+                    System.out.println("[" + j.id + "]" + marker + "  " + status + sb + j.command);
                 }
             }
         }
