@@ -103,13 +103,22 @@ public class Main {
 
                 for (Job j : original) {
                     String marker;
-                    if (j == mostRecent) marker = "+";
-                    else if (j == secondMost) marker = "-";
-                    else marker = " ";
+                    boolean isDone = doneJobs.contains(j);
+                    
+                    if (isDone) {
+                        // Done jobs always get a space (no marker)
+                        marker = " ";
+                    } else if (j == mostRecent) {
+                        marker = "+";
+                    } else if (j == secondMost) {
+                        marker = "-";
+                    } else {
+                        marker = " ";
+                    }
 
                     String status;
                     String suffix;
-                    if (doneJobs.contains(j)) {
+                    if (isDone) {
                         status = "Done";
                         suffix = "";
                     } else {
