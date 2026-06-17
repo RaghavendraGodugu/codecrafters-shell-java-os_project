@@ -89,10 +89,17 @@ public class Main {
             else if (input.equals("jobs")) {
                 List<Job> original = new ArrayList<>(jobs);
                 List<Job> doneJobs = reapJobs(false);
-                if (original.isEmpty()) continue;
+                if (original.isEmpty() && doneJobs.isEmpty()) continue;
 
-                Job mostRecent = original.get(original.size() - 1);
-                Job secondMost = (original.size() >= 2) ? original.get(original.size() - 2) : null;
+                // Calculate markers from REMAINING jobs (after reaping)
+                Job mostRecent = null;
+                Job secondMost = null;
+                if (!jobs.isEmpty()) {
+                    mostRecent = jobs.get(jobs.size() - 1);
+                    if (jobs.size() >= 2) {
+                        secondMost = jobs.get(jobs.size() - 2);
+                    }
+                }
 
                 for (Job j : original) {
                     String marker;
