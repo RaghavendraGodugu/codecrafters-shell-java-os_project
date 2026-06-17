@@ -10,6 +10,7 @@ public class Main {
         final long pid;
         final String command;
         final Process process;
+        boolean isDoneHandled = false; // Tracks if a Done message was already printed
 
         Job(int id, long pid, String command, Process process) {
             this.id = id;
@@ -27,7 +28,8 @@ public class Main {
         String currentDirectory = System.getProperty("user.dir");
 
         while (true) {
-            reapJobs(true);
+            // 1. Automatic reaping before showing the prompt
+            reapAndPrintJobsBeforePrompt();
             System.out.print("$ ");
 
             if (!sc.hasNextLine()) break;
@@ -83,10 +85,9 @@ public class Main {
             }
 
             else if (input.equals("jobs")) {
-                // Keep an snapshot copy of the jobs list to preserve order for markers
+                // Determine active/dead state before snapshotting for stable markers
                 List<Job> snapshot = new ArrayList<>(jobs);
-                // Call reapJobs(true) so that completed jobs are correctly printed as Done
-                List<Job> doneJobs = reapJobs(true);
+                List<Job> reapedThisTurn = silentReap();
 
                 if (snapshot.isEmpty()) continue;
 
@@ -94,17 +95,20 @@ public class Main {
                 Job secondMost = (snapshot.size() >= 2) ? snapshot.get(snapshot.size() - 2) : null;
 
                 for (Job j : snapshot) {
-                    // Skip printing running layout if the job was already caught and printed by reapJobs
-                    if (doneJobs.contains(j)) {
-                        continue;
-                    }
-
                     String marker = " ";
                     if (j == mostRecent) marker = "+";
                     else if (j == secondMost) marker = "-";
 
-                    String status = "Running";
-                    String suffix = " &";
+                    String status;
+                    String suffix;
+
+                    if (reapedThisTurn.contains(j) || j.isDoneHandled) {
+                        status = "Done";
+                        suffix = "";
+                    } else {
+                        status = "Running";
+                        suffix = " &";
+                    }
 
                     int pad = 24 - status.length();
                     if (pad < 0) pad = 0;
@@ -232,12 +236,14 @@ public class Main {
         return null;
     }
 
-    private static List<Job> reapJobs(boolean showDone) {
-        List<Job> done = new ArrayList<>();
-        if (jobs.isEmpty()) return done;
+    /**
+     * Automatic reaping logic performed right before presenting a new shell prompt.
+     * Elements are printed and then permanently purged from the tracking table.
+     */
+    private static void reapAndPrintJobsBeforePrompt() {
+        if (jobs.isEmpty()) return;
 
         List<Job> remaining = new ArrayList<>();
-
         Job mostRecent = jobs.get(jobs.size() - 1);
         Job secondMost = (jobs.size() >= 2) ? jobs.get(jobs.size() - 2) : null;
 
@@ -245,26 +251,41 @@ public class Main {
             if (j.process.isAlive()) {
                 remaining.add(j);
             } else {
-                done.add(j);
-                if (showDone) {
-                    String marker = " ";
-                    if (j == mostRecent) marker = "+";
-                    else if (j == secondMost) marker = "-";
-                    
-                    String status = "Done";
-                    int pad = 24 - status.length();
-                    if (pad < 0) pad = 0;
-                    StringBuilder sb = new StringBuilder();
-                    for (int k = 0; k < pad; k++) sb.append(' ');
-                    System.out.println("[" + j.id + "]" + marker + "  " + status + sb.toString() + j.command);
-                }
+                String marker = " ";
+                if (j == mostRecent) marker = "+";
+                else if (j == secondMost) marker = "-";
+                
+                String status = "Done";
+                int pad = 24 - status.length();
+                if (pad < 0) pad = 0;
+                StringBuilder sb = new StringBuilder();
+                for (int k = 0; k < pad; k++) sb.append(' ');
+                
+                System.out.println("[" + j.id + "]" + marker + "  " + status + sb.toString() + j.command);
             }
         }
-
         jobs.clear();
         jobs.addAll(remaining);
+    }
 
-        return done;
+    /**
+     * Checks job collection states silently without printing anything instantly.
+     * Clears completely dead references out of the active running map array.
+     */
+    private static List<Job> silentReap() {
+        List<Job> reapedThisTurn = new ArrayList<>();
+        List<Job> remaining = new ArrayList<>();
+
+        for (Job j : jobs) {
+            if (j.process.isAlive()) {
+                remaining.add(j);
+            } else {
+                reapedThisTurn.add(j);
+            }
+        }
+        jobs.clear();
+        jobs.addAll(remaining);
+        return reapedThisTurn;
     }
 
     private static List<String> parse(String input) {
