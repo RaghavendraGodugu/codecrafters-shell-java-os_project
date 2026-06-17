@@ -22,7 +22,9 @@ public class Main {
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
         while (true) {
-            reapFinishedJobs(); // reaping before each prompt
+            // REAP BEFORE EACH PROMPT (this is the key fix)
+            reapFinishedJobs();
+            
             System.out.print("$ ");
             System.out.flush();
 
@@ -39,7 +41,8 @@ public class Main {
             }
 
             if (line.equals("jobs")) {
-                reapFinishedJobs(); // also reap inside jobs builtin
+                // Also reap inside jobs (for safety)
+                reapFinishedJobs();
                 printJobs();
                 continue;
             }
