@@ -189,8 +189,10 @@ public class Main {
     }
 
     private static void printJobs() {
-        for (Job job : jobs) {
-            System.out.printf("[%d]   %-23s %s &%n", job.id, "Running", job.command);
+        for (int i = 0; i < jobs.size(); i++) {
+            Job job = jobs.get(i);
+            String marker = markerForIndex(i, jobs.size());
+            System.out.println("[" + job.id + "]" + marker + " Running " + job.command + " &");
         }
     }
 
