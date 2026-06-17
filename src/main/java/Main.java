@@ -67,7 +67,7 @@ public class Main {
                     continue;
 
                 case "jobs":
-                    reapCompletedJobs(true);
+                    reapCompletedJobs(false);
                     printJobs();
                     continue;
 
@@ -189,20 +189,14 @@ public class Main {
     }
 
     private static void printJobs() {
-        for (int i = 0; i < jobs.size(); i++) {
-            Job job = jobs.get(i);
-            String marker = markerForIndex(i, jobs.size());
-            System.out.printf("[%d]%s  %-24s %s &%n", job.id, marker, "Running", job.command);
+        for (Job job : jobs) {
+            System.out.printf("[%d]   %-23s %s &%n", job.id, "Running", job.command);
         }
     }
 
     private static String markerForIndex(int index, int size) {
-        if (index == size - 1) {
-            return "+";
-        }
-        if (index == size - 2) {
-            return "-";
-        }
+        if (index == size - 1) return "+";
+        if (index == size - 2) return "-";
         return " ";
     }
 
@@ -287,7 +281,6 @@ public class Main {
             if (!path.isAbsolute()) {
                 path = Paths.get(System.getProperty("user.dir")).resolve(path).normalize();
             }
-
             if (Files.exists(path) && Files.isRegularFile(path) && Files.isExecutable(path)) {
                 return path.toAbsolutePath().toString();
             }
