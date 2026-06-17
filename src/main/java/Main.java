@@ -1,8 +1,20 @@
 import java.io.*;
-import java.nio.file.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Main {
+    static class Job {
+        int jobId;
+        Process process;
+        String command;
+
+        Job(int jobId, Process process, String command) {
+            this.jobId = jobId;
+            this.process = process;
+            this.command = command;
+        }
+    }
+
     private static final List<Job> jobs = new ArrayList<>();
     private static int nextJobId = 1;
 
@@ -10,306 +22,83 @@ public class Main {
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
         while (true) {
-            reapCompletedJobs(true);
-
+            reapFinishedJobs(); // reaping before each prompt
             System.out.print("$ ");
             System.out.flush();
 
-            String input = reader.readLine();
-            if (input == null) {
+            String line = reader.readLine();
+            if (line == null) break;
+
+            line = line.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            if (line.equals("exit 0")) {
                 break;
             }
 
-            if (input.trim().isEmpty()) {
+            if (line.equals("jobs")) {
+                reapFinishedJobs(); // also reap inside jobs builtin
+                printJobs();
                 continue;
             }
 
-            ParsedCommand cmd = parseCommand(input);
-            if (cmd.args.isEmpty()) {
+            boolean background = line.endsWith("&");
+            String commandLine = background ? line.substring(0, line.length() - 1).trim() : line;
+
+            List<String> parts = Arrays.stream(commandLine.split("\\s+"))
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+
+            if (parts.isEmpty()) {
                 continue;
             }
 
-            String command = cmd.args.get(0);
+            ProcessBuilder pb = new ProcessBuilder(parts);
+            pb.redirectInput(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+            pb.redirectError(ProcessBuilder.Redirect.INHERIT);
 
-            switch (command) {
-                case "exit":
-                    int code = 0;
-                    if (cmd.args.size() > 1) {
-                        try {
-                            code = Integer.parseInt(cmd.args.get(1));
-                        } catch (NumberFormatException ignored) {
-                        }
-                    }
-                    System.exit(code);
-                    return;
+            try {
+                Process process = pb.start();
 
-                case "echo":
-                    handleEcho(cmd.args);
-                    break;
-
-                case "pwd":
-                    System.out.println(System.getProperty("user.dir"));
-                    break;
-
-                case "cd":
-                    handleCd(cmd.args);
-                    break;
-
-                case "type":
-                    handleType(cmd.args);
-                    break;
-
-                case "jobs":
-                    reapCompletedJobs(false);
-                    printJobs();
-                    break;
-
-                default:
-                    runExternal(cmd);
-                    break;
-            }
-        }
-    }
-
-    private static void handleEcho(List<String> args) {
-        if (args.size() <= 1) {
-            System.out.println();
-            return;
-        }
-        System.out.println(String.join(" ", args.subList(1, args.size())));
-    }
-
-    private static void handleCd(List<String> args) {
-        String target;
-        if (args.size() < 2 || args.get(1).equals("~")) {
-            target = System.getProperty("user.home");
-        } else {
-            target = args.get(1);
-            if (target.startsWith("~")) {
-                target = System.getProperty("user.home") + target.substring(1);
-            }
-        }
-
-        Path path = Paths.get(target);
-        if (!path.isAbsolute()) {
-            path = Paths.get(System.getProperty("user.dir")).resolve(path).normalize();
-        }
-
-        if (Files.exists(path) && Files.isDirectory(path)) {
-            System.setProperty("user.dir", path.toAbsolutePath().toString());
-        } else {
-            System.out.println("cd: " + args.get(1) + ": No such file or directory");
-        }
-    }
-
-    private static void handleType(List<String> args) {
-        if (args.size() < 2) return;
-
-        String cmd = args.get(1);
-        if (isBuiltin(cmd)) {
-            System.out.println(cmd + " is a shell builtin");
-            return;
-        }
-
-        String executable = findExecutable(cmd);
-        if (executable != null) {
-            System.out.println(cmd + " is " + executable);
-        } else {
-            System.out.println(cmd + ": not found");
-        }
-    }
-
-    private static boolean isBuiltin(String cmd) {
-        return Set.of("exit", "echo", "pwd", "cd", "type", "jobs").contains(cmd);
-    }
-
-    private static void runExternal(ParsedCommand cmd) {
-        String executable = findExecutable(cmd.args.get(0));
-        if (executable == null) {
-            System.out.println(cmd.args.get(0) + ": command not found");
-            return;
-        }
-
-        ProcessBuilder pb = new ProcessBuilder(cmd.args);
-        pb.directory(new File(System.getProperty("user.dir")));
-        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-
-        try {
-            Process process = pb.start();
-
-            if (cmd.background) {
-                Job job = new Job(nextJobId++, process, cmd.commandWithoutAmpersand);
-                jobs.add(job);
-                System.out.println("[" + job.id + "] " + process.pid());
-            } else {
-                try (InputStream in = process.getInputStream()) {
-                    in.transferTo(System.out);
+                if (background) {
+                    Job job = new Job(nextJobId++, process, commandLine);
+                    jobs.add(job);
+                    System.out.println("[" + job.jobId + "] " + process.pid());
+                } else {
+                    process.waitFor();
                 }
-                process.waitFor();
+            } catch (IOException e) {
+                System.out.println(parts.get(0) + ": command not found");
             }
-        } catch (IOException e) {
-            System.out.println(cmd.args.get(0) + ": command not found");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 
-    private static void reapCompletedJobs(boolean printDone) {
-        List<Job> completed = new ArrayList<>();
-
-        for (Job job : jobs) {
+    private static void reapFinishedJobs() {
+        Iterator<Job> it = jobs.iterator();
+        while (it.hasNext()) {
+            Job job = it.next();
             if (!job.process.isAlive()) {
-                completed.add(job);
+                System.out.println("[" + job.jobId + "] " + markerFor(job) + " Done " + job.command);
+                it.remove();
             }
         }
-
-        if (printDone) {
-            for (Job job : completed) {
-                int idx = jobs.indexOf(job);
-                String marker = markerForIndex(idx, jobs.size());
-                System.out.println("[" + job.id + "] " + marker + " Done " + job.command);
-            }
-        }
-
-        jobs.removeAll(completed);
     }
 
     private static void printJobs() {
-        for (int i = 0; i < jobs.size(); i++) {
-            Job job = jobs.get(i);
-            String marker = markerForIndex(i, jobs.size());
-            System.out.println("[" + job.id + "]" + marker + " Running " + job.command + " &");
+        for (Job job : jobs) {
+            String status = job.process.isAlive() ? "Running" : "Done";
+            System.out.println("[" + job.jobId + "] " + markerFor(job) + " " + status + " " + job.command + " &");
         }
     }
 
-    private static String markerForIndex(int index, int size) {
-        if (index == size - 1) return "+";
-        if (index == size - 2) return "-";
+    private static String markerFor(Job target) {
+        if (jobs.isEmpty()) return "+";
+        Job current = jobs.get(jobs.size() - 1);
+        if (current == target) return "+";
+        if (jobs.size() >= 2 && jobs.get(jobs.size() - 2) == target) return "-";
         return " ";
-    }
-
-    private static ParsedCommand parseCommand(String input) {
-        String trimmed = stripTrailingWhitespace(input);
-        boolean background = false;
-
-        if (trimmed.endsWith("&")) {
-            background = true;
-            trimmed = stripTrailingWhitespace(trimmed.substring(0, trimmed.length() - 1));
-        }
-
-        List<String> args = tokenize(trimmed);
-        return new ParsedCommand(args, background, trimmed);
-    }
-
-    private static String stripTrailingWhitespace(String s) {
-        int end = s.length();
-        while (end > 0 && Character.isWhitespace(s.charAt(end - 1))) {
-            end--;
-        }
-        return s.substring(0, end);
-    }
-
-    private static List<String> tokenize(String input) {
-        List<String> tokens = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-
-        boolean inSingle = false;
-        boolean inDouble = false;
-        boolean escaping = false;
-
-        for (int i = 0; i < input.length(); i++) {
-            char ch = input.charAt(i);
-
-            if (escaping) {
-                current.append(ch);
-                escaping = false;
-                continue;
-            }
-
-            if (ch == '\\') {
-                if (inSingle) {
-                    current.append(ch);
-                } else {
-                    escaping = true;
-                }
-                continue;
-            }
-
-            if (ch == '\'' && !inDouble) {
-                inSingle = !inSingle;
-                continue;
-            }
-
-            if (ch == '"' && !inSingle) {
-                inDouble = !inDouble;
-                continue;
-            }
-
-            if (Character.isWhitespace(ch) && !inSingle && !inDouble) {
-                if (current.length() > 0) {
-                    tokens.add(current.toString());
-                    current.setLength(0);
-                }
-                continue;
-            }
-
-            current.append(ch);
-        }
-
-        if (current.length() > 0) {
-            tokens.add(current.toString());
-        }
-
-        return tokens;
-    }
-
-    private static String findExecutable(String command) {
-        if (command.contains("/")) {
-            Path path = Paths.get(command);
-            if (!path.isAbsolute()) {
-                path = Paths.get(System.getProperty("user.dir")).resolve(path).normalize();
-            }
-            if (Files.exists(path) && Files.isRegularFile(path) && Files.isExecutable(path)) {
-                return path.toAbsolutePath().toString();
-            }
-            return null;
-        }
-
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv == null || pathEnv.isEmpty()) return null;
-
-        String[] dirs = pathEnv.split(File.pathSeparator);
-        for (String dir : dirs) {
-            Path candidate = Paths.get(dir, command);
-            if (Files.exists(candidate) && Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                return candidate.toAbsolutePath().toString();
-            }
-        }
-
-        return null;
-    }
-
-    private static class Job {
-        final int id;
-        final Process process;
-        final String command;
-
-        Job(int id, Process process, String command) {
-            this.id = id;
-            this.process = process;
-            this.command = command;
-        }
-    }
-
-    private static class ParsedCommand {
-        final List<String> args;
-        final boolean background;
-        final String commandWithoutAmpersand;
-
-        ParsedCommand(List<String> args, boolean background, String commandWithoutAmpersand) {
-            this.args = args;
-            this.background = background;
-            this.commandWithoutAmpersand = commandWithoutAmpersand;
-        }
     }
 }
