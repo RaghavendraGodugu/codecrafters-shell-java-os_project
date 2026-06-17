@@ -30,6 +30,7 @@ public class Main {
             reapJobs(true);
             System.out.print("$ ");
 
+            if (!sc.hasNextLine()) break;
             String input = sc.nextLine();
             if (input == null || input.trim().isEmpty()) continue;
 
@@ -66,6 +67,7 @@ public class Main {
 
             else if (input.startsWith("type ")) {
                 List<String> parts = parse(input);
+                if (parts.size() < 2) continue;
                 String cmd = parts.get(1);
 
                 if (isBuiltin(cmd)) {
@@ -81,28 +83,19 @@ public class Main {
             }
 
             else if (input.equals("jobs")) {
-                List<Job> original = new ArrayList<>(jobs);
-                List<Job> doneJobs = reapJobs(false);
-                if (original.isEmpty()) continue;
+                reapJobs(false); // Update job statuses first
+                if (jobs.isEmpty()) continue;
 
-                Job mostRecent = original.get(original.size() - 1);
-                Job secondMost = (original.size() >= 2) ? original.get(original.size() - 2) : null;
+                Job mostRecent = jobs.get(jobs.size() - 1);
+                Job secondMost = (jobs.size() >= 2) ? jobs.get(jobs.size() - 2) : null;
 
-                for (Job j : original) {
-                    String marker;
+                for (Job j : jobs) {
+                    String marker = " ";
                     if (j == mostRecent) marker = "+";
                     else if (j == secondMost) marker = "-";
-                    else marker = " ";
 
-                    String status;
-                    String suffix;
-                    if (doneJobs.contains(j)) {
-                        status = "Done";
-                        suffix = "";
-                    } else {
-                        status = "Running";
-                        suffix = " &";
-                    }
+                    String status = "Running";
+                    String suffix = " &";
 
                     int pad = 24 - status.length();
                     if (pad < 0) pad = 0;
@@ -125,7 +118,6 @@ public class Main {
                 }
 
                 List<String> cmdParts = new ArrayList<>();
-
                 String outFile = null;
                 String errFile = null;
                 boolean appendOut = false;
@@ -153,15 +145,16 @@ public class Main {
 
                 if (cmdParts.isEmpty()) continue;
 
-                if (findExecutable(cmdParts.get(0), currentDirectory) == null) {
-                    System.out.println(input + ": command not found");
+                // FIX: Check the parsed token command, not the whole raw line string
+                String baseCmd = cmdParts.get(0);
+                if (findExecutable(baseCmd, currentDirectory) == null) {
+                    System.out.println(baseCmd + ": command not found");
                     continue;
                 }
 
                 ProcessBuilder pb = new ProcessBuilder(cmdParts);
                 pb.directory(new File(currentDirectory));
 
-                // Configure stdout redirection
                 if (outFile != null) {
                     File out = new File(outFile);
                     if (!out.isAbsolute()) out = new File(currentDirectory, outFile);
@@ -171,7 +164,6 @@ public class Main {
                     pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
                 }
 
-                // Configure stderr redirection
                 if (errFile != null) {
                     File err = new File(errFile);
                     if (!err.isAbsolute()) err = new File(currentDirectory, errFile);
@@ -182,7 +174,7 @@ public class Main {
                 }
 
                 Process process = pb.start();
-                int pid = (int) process.pid();
+                long pid = process.pid();
 
                 if (background) {
                     String cmdString = String.join(" ", cmdParts);
@@ -207,10 +199,8 @@ public class Main {
     }
 
     private static String findExecutable(String command, String currentDirectory) {
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) pathEnv = "";
+        if (isBuiltin(command)) return command; // Safe routing shortcut
 
-        // If the command looks like a path, resolve against shell currentDirectory
         File cmdFile = new File(command);
         if (!cmdFile.isAbsolute()) {
             cmdFile = new File(currentDirectory, command);
@@ -219,6 +209,8 @@ public class Main {
             return cmdFile.getAbsolutePath();
         }
 
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) pathEnv = "";
         String[] paths = pathEnv.split(File.pathSeparator);
 
         for (String p : paths) {
@@ -235,29 +227,22 @@ public class Main {
         List<Job> done = new ArrayList<>();
         if (jobs.isEmpty()) return done;
 
+        List<Job> remaining = new ArrayList<>();
+        
+        // Calculate markers before removing any finished jobs
         Job mostRecent = jobs.get(jobs.size() - 1);
         Job secondMost = (jobs.size() >= 2) ? jobs.get(jobs.size() - 2) : null;
 
-        List<Job> remaining = new ArrayList<>();
         for (Job j : jobs) {
-            boolean alive = j.process.isAlive();
-            if (alive) {
-                try {
-                    alive = !j.process.waitFor(0, java.util.concurrent.TimeUnit.MILLISECONDS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-
-            if (alive) {
+            if (j.process.isAlive()) {
                 remaining.add(j);
             } else {
                 done.add(j);
                 if (showDone) {
-                    String marker;
+                    String marker = " ";
                     if (j == mostRecent) marker = "+";
                     else if (j == secondMost) marker = "-";
-                    else marker = " ";
+                    
                     String status = "Done";
                     int pad = 24 - status.length();
                     if (pad < 0) pad = 0;
