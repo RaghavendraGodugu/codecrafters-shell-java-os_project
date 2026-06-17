@@ -21,6 +21,10 @@ public class Main {
 
     private static final List<Job> jobs = new ArrayList<>();
     private static int nextJobId = 1;
+    
+    // Global job references to keep markers stable when jobs exit out of order
+    private static Job currentJob = null;  // Tracks '+'
+    private static Job previousJob = null; // Tracks '-'
 
     public static void main(String[] args) throws Exception {
         Scanner sc = new Scanner(System.in);
@@ -83,16 +87,13 @@ public class Main {
             }
 
             else if (input.equals("jobs")) {
-                reapJobs(false); // Update job statuses first
+                reapJobs(false); // Evaluate and update jobs status first
                 if (jobs.isEmpty()) continue;
-
-                Job mostRecent = jobs.get(jobs.size() - 1);
-                Job secondMost = (jobs.size() >= 2) ? jobs.get(jobs.size() - 2) : null;
 
                 for (Job j : jobs) {
                     String marker = " ";
-                    if (j == mostRecent) marker = "+";
-                    else if (j == secondMost) marker = "-";
+                    if (j == currentJob) marker = "+";
+                    else if (j == previousJob) marker = "-";
 
                     String status = "Running";
                     String suffix = " &";
@@ -145,7 +146,6 @@ public class Main {
 
                 if (cmdParts.isEmpty()) continue;
 
-                // FIX: Check the parsed token command, not the whole raw line string
                 String baseCmd = cmdParts.get(0);
                 if (findExecutable(baseCmd, currentDirectory) == null) {
                     System.out.println(baseCmd + ": command not found");
@@ -180,6 +180,11 @@ public class Main {
                     String cmdString = String.join(" ", cmdParts);
                     Job job = new Job(nextJobId++, pid, cmdString, process);
                     jobs.add(job);
+                    
+                    // Manage current (+) and previous (-) job reference shift
+                    previousJob = currentJob;
+                    currentJob = job;
+
                     System.out.println("[" + job.id + "] " + job.pid);
                     continue;
                 }
@@ -199,7 +204,7 @@ public class Main {
     }
 
     private static String findExecutable(String command, String currentDirectory) {
-        if (isBuiltin(command)) return command; // Safe routing shortcut
+        if (isBuiltin(command)) return command;
 
         File cmdFile = new File(command);
         if (!cmdFile.isAbsolute()) {
@@ -228,10 +233,6 @@ public class Main {
         if (jobs.isEmpty()) return done;
 
         List<Job> remaining = new ArrayList<>();
-        
-        // Calculate markers before removing any finished jobs
-        Job mostRecent = jobs.get(jobs.size() - 1);
-        Job secondMost = (jobs.size() >= 2) ? jobs.get(jobs.size() - 2) : null;
 
         for (Job j : jobs) {
             if (j.process.isAlive()) {
@@ -240,8 +241,8 @@ public class Main {
                 done.add(j);
                 if (showDone) {
                     String marker = " ";
-                    if (j == mostRecent) marker = "+";
-                    else if (j == secondMost) marker = "-";
+                    if (j == currentJob) marker = "+";
+                    else if (j == previousJob) marker = "-";
                     
                     String status = "Done";
                     int pad = 24 - status.length();
@@ -255,6 +256,16 @@ public class Main {
 
         jobs.clear();
         jobs.addAll(remaining);
+
+        // Safely update static tracking pointers if reaped jobs are gone
+        if (currentJob != null && !remaining.contains(currentJob)) {
+            currentJob = previousJob; // Demote previous job to current if current is done
+            previousJob = null;
+        }
+        if (previousJob != null && !remaining.contains(previousJob)) {
+            previousJob = null;
+        }
+
         return done;
     }
 
