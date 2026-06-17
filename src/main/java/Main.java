@@ -36,46 +36,44 @@ public class Main {
                 continue;
             }
 
-            String commandName = cmd.args.get(0);
+            String name = cmd.args.get(0);
 
-            if ("exit".equals(commandName)) {
-                int exitCode = 0;
-                if (cmd.args.size() > 1) {
-                    try {
-                        exitCode = Integer.parseInt(cmd.args.get(1));
-                    } catch (NumberFormatException ignored) {
+            switch (name) {
+                case "exit":
+                    int code = 0;
+                    if (cmd.args.size() > 1) {
+                        try {
+                            code = Integer.parseInt(cmd.args.get(1));
+                        } catch (NumberFormatException ignored) {
+                        }
                     }
-                }
-                System.exit(exitCode);
-            }
+                    System.exit(code);
+                    return;
 
-            if ("echo".equals(commandName)) {
-                runEcho(cmd.args);
-                continue;
-            }
+                case "echo":
+                    runEcho(cmd.args);
+                    continue;
 
-            if ("pwd".equals(commandName)) {
-                System.out.println(System.getProperty("user.dir"));
-                continue;
-            }
+                case "pwd":
+                    System.out.println(System.getProperty("user.dir"));
+                    continue;
 
-            if ("cd".equals(commandName)) {
-                runCd(cmd.args);
-                continue;
-            }
+                case "cd":
+                    runCd(cmd.args);
+                    continue;
 
-            if ("type".equals(commandName)) {
-                runType(cmd.args);
-                continue;
-            }
+                case "type":
+                    runType(cmd.args);
+                    continue;
 
-            if ("jobs".equals(commandName)) {
-                reapCompletedJobs(false);
-                printJobs();
-                continue;
-            }
+                case "jobs":
+                    reapCompletedJobs(false);
+                    printJobs();
+                    continue;
 
-            runExternal(cmd);
+                default:
+                    runExternal(cmd);
+            }
         }
     }
 
@@ -106,7 +104,7 @@ public class Main {
         if (Files.exists(path) && Files.isDirectory(path)) {
             System.setProperty("user.dir", path.toAbsolutePath().toString());
         } else {
-            String shown = args.size() >= 2 ? args.get(1) : "";
+            String shown = args.size() > 1 ? args.get(1) : "";
             System.out.println("cd: " + shown + ": No such file or directory");
         }
     }
@@ -116,27 +114,27 @@ public class Main {
             return;
         }
 
-        String name = args.get(1);
-        if (isBuiltin(name)) {
-            System.out.println(name + " is a shell builtin");
+        String cmd = args.get(1);
+        if (isBuiltin(cmd)) {
+            System.out.println(cmd + " is a shell builtin");
             return;
         }
 
-        String executable = findExecutable(name);
+        String executable = findExecutable(cmd);
         if (executable != null) {
-            System.out.println(name + " is " + executable);
+            System.out.println(cmd + " is " + executable);
         } else {
-            System.out.println(name + ": not found");
+            System.out.println(cmd + ": not found");
         }
     }
 
-    private static boolean isBuiltin(String name) {
-        return "exit".equals(name)
-                || "echo".equals(name)
-                || "pwd".equals(name)
-                || "cd".equals(name)
-                || "type".equals(name)
-                || "jobs".equals(name);
+    private static boolean isBuiltin(String cmd) {
+        return "exit".equals(cmd)
+                || "echo".equals(cmd)
+                || "pwd".equals(cmd)
+                || "cd".equals(cmd)
+                || "type".equals(cmd)
+                || "jobs".equals(cmd);
     }
 
     private static void runExternal(ParsedCommand cmd) {
@@ -191,10 +189,8 @@ public class Main {
     }
 
     private static void printJobs() {
-        for (int i = 0; i < jobs.size(); i++) {
-            Job job = jobs.get(i);
-            String marker = markerForIndex(i, jobs.size());
-            System.out.println("[" + job.id + "] " + marker + " Running " + job.command + " &");
+        for (Job job : jobs) {
+            System.out.printf("[%d]   %-23s %s &%n", job.id, "Running", job.command);
         }
     }
 
