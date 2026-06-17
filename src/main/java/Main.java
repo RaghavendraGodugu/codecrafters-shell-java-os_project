@@ -21,10 +21,6 @@ public class Main {
 
     private static final List<Job> jobs = new ArrayList<>();
     private static int nextJobId = 1;
-    
-    // Global job references to keep markers stable when jobs exit out of order
-    private static Job currentJob = null;  // Tracks '+'
-    private static Job previousJob = null; // Tracks '-'
 
     public static void main(String[] args) throws Exception {
         Scanner sc = new Scanner(System.in);
@@ -87,13 +83,25 @@ public class Main {
             }
 
             else if (input.equals("jobs")) {
-                reapJobs(false); // Evaluate and update jobs status first
-                if (jobs.isEmpty()) continue;
+                // Keep an snapshot copy of the jobs list to preserve order for markers
+                List<Job> snapshot = new ArrayList<>(jobs);
+                // Call reapJobs(true) so that completed jobs are correctly printed as Done
+                List<Job> doneJobs = reapJobs(true);
 
-                for (Job j : jobs) {
+                if (snapshot.isEmpty()) continue;
+
+                Job mostRecent = snapshot.get(snapshot.size() - 1);
+                Job secondMost = (snapshot.size() >= 2) ? snapshot.get(snapshot.size() - 2) : null;
+
+                for (Job j : snapshot) {
+                    // Skip printing running layout if the job was already caught and printed by reapJobs
+                    if (doneJobs.contains(j)) {
+                        continue;
+                    }
+
                     String marker = " ";
-                    if (j == currentJob) marker = "+";
-                    else if (j == previousJob) marker = "-";
+                    if (j == mostRecent) marker = "+";
+                    else if (j == secondMost) marker = "-";
 
                     String status = "Running";
                     String suffix = " &";
@@ -180,10 +188,6 @@ public class Main {
                     String cmdString = String.join(" ", cmdParts);
                     Job job = new Job(nextJobId++, pid, cmdString, process);
                     jobs.add(job);
-                    
-                    // Manage current (+) and previous (-) job reference shift
-                    previousJob = currentJob;
-                    currentJob = job;
 
                     System.out.println("[" + job.id + "] " + job.pid);
                     continue;
@@ -234,6 +238,9 @@ public class Main {
 
         List<Job> remaining = new ArrayList<>();
 
+        Job mostRecent = jobs.get(jobs.size() - 1);
+        Job secondMost = (jobs.size() >= 2) ? jobs.get(jobs.size() - 2) : null;
+
         for (Job j : jobs) {
             if (j.process.isAlive()) {
                 remaining.add(j);
@@ -241,8 +248,8 @@ public class Main {
                 done.add(j);
                 if (showDone) {
                     String marker = " ";
-                    if (j == currentJob) marker = "+";
-                    else if (j == previousJob) marker = "-";
+                    if (j == mostRecent) marker = "+";
+                    else if (j == secondMost) marker = "-";
                     
                     String status = "Done";
                     int pad = 24 - status.length();
@@ -256,15 +263,6 @@ public class Main {
 
         jobs.clear();
         jobs.addAll(remaining);
-
-        // Safely update static tracking pointers if reaped jobs are gone
-        if (currentJob != null && !remaining.contains(currentJob)) {
-            currentJob = previousJob; // Demote previous job to current if current is done
-            previousJob = null;
-        }
-        if (previousJob != null && !remaining.contains(previousJob)) {
-            previousJob = null;
-        }
 
         return done;
     }
