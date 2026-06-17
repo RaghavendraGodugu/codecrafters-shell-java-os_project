@@ -1,13 +1,6 @@
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
 
 public class Main {
     private static final List<Job> jobs = new ArrayList<>();
@@ -36,9 +29,9 @@ public class Main {
                 continue;
             }
 
-            String name = cmd.args.get(0);
+            String command = cmd.args.get(0);
 
-            switch (name) {
+            switch (command) {
                 case "exit":
                     int code = 0;
                     if (cmd.args.size() > 1) {
@@ -51,33 +44,34 @@ public class Main {
                     return;
 
                 case "echo":
-                    runEcho(cmd.args);
-                    continue;
+                    handleEcho(cmd.args);
+                    break;
 
                 case "pwd":
                     System.out.println(System.getProperty("user.dir"));
-                    continue;
+                    break;
 
                 case "cd":
-                    runCd(cmd.args);
-                    continue;
+                    handleCd(cmd.args);
+                    break;
 
                 case "type":
-                    runType(cmd.args);
-                    continue;
+                    handleType(cmd.args);
+                    break;
 
                 case "jobs":
                     reapCompletedJobs(false);
                     printJobs();
-                    continue;
+                    break;
 
                 default:
                     runExternal(cmd);
+                    break;
             }
         }
     }
 
-    private static void runEcho(List<String> args) {
+    private static void handleEcho(List<String> args) {
         if (args.size() <= 1) {
             System.out.println();
             return;
@@ -85,9 +79,9 @@ public class Main {
         System.out.println(String.join(" ", args.subList(1, args.size())));
     }
 
-    private static void runCd(List<String> args) {
+    private static void handleCd(List<String> args) {
         String target;
-        if (args.size() < 2 || "~".equals(args.get(1))) {
+        if (args.size() < 2 || args.get(1).equals("~")) {
             target = System.getProperty("user.home");
         } else {
             target = args.get(1);
@@ -104,15 +98,12 @@ public class Main {
         if (Files.exists(path) && Files.isDirectory(path)) {
             System.setProperty("user.dir", path.toAbsolutePath().toString());
         } else {
-            String shown = args.size() > 1 ? args.get(1) : "";
-            System.out.println("cd: " + shown + ": No such file or directory");
+            System.out.println("cd: " + args.get(1) + ": No such file or directory");
         }
     }
 
-    private static void runType(List<String> args) {
-        if (args.size() < 2) {
-            return;
-        }
+    private static void handleType(List<String> args) {
+        if (args.size() < 2) return;
 
         String cmd = args.get(1);
         if (isBuiltin(cmd)) {
@@ -129,12 +120,7 @@ public class Main {
     }
 
     private static boolean isBuiltin(String cmd) {
-        return "exit".equals(cmd)
-                || "echo".equals(cmd)
-                || "pwd".equals(cmd)
-                || "cd".equals(cmd)
-                || "type".equals(cmd)
-                || "jobs".equals(cmd);
+        return Set.of("exit", "echo", "pwd", "cd", "type", "jobs").contains(cmd);
     }
 
     private static void runExternal(ParsedCommand cmd) {
@@ -168,7 +154,7 @@ public class Main {
         }
     }
 
-    private static void reapCompletedJobs(boolean printDoneLines) {
+    private static void reapCompletedJobs(boolean printDone) {
         List<Job> completed = new ArrayList<>();
 
         for (Job job : jobs) {
@@ -177,7 +163,7 @@ public class Main {
             }
         }
 
-        if (printDoneLines) {
+        if (printDone) {
             for (Job job : completed) {
                 int idx = jobs.indexOf(job);
                 String marker = markerForIndex(idx, jobs.size());
@@ -189,8 +175,10 @@ public class Main {
     }
 
     private static void printJobs() {
-        for (Job job : jobs) {
-            System.out.printf("[%d]   %-23s %s &%n", job.id, "Running", job.command);
+        for (int i = 0; i < jobs.size(); i++) {
+            Job job = jobs.get(i);
+            String marker = markerForIndex(i, jobs.size());
+            System.out.println("[" + job.id + "]" + marker + " Running " + job.command + " &");
         }
     }
 
@@ -288,9 +276,7 @@ public class Main {
         }
 
         String pathEnv = System.getenv("PATH");
-        if (pathEnv == null || pathEnv.isEmpty()) {
-            return null;
-        }
+        if (pathEnv == null || pathEnv.isEmpty()) return null;
 
         String[] dirs = pathEnv.split(File.pathSeparator);
         for (String dir : dirs) {
