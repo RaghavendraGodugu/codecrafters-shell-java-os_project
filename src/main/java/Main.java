@@ -67,7 +67,7 @@ public class Main {
                     continue;
 
                 case "jobs":
-                    reapCompletedJobs(false);
+                    reapCompletedJobs(true);
                     printJobs();
                     continue;
 
@@ -189,8 +189,10 @@ public class Main {
     }
 
     private static void printJobs() {
-        for (Job job : jobs) {
-            System.out.println("[" + job.id + "] Running " + job.command + " &");
+        for (int i = 0; i < jobs.size(); i++) {
+            Job job = jobs.get(i);
+            String marker = markerForIndex(i, jobs.size());
+            System.out.printf("[%d]%s  %-24s %s &%n", job.id, marker, "Running", job.command);
         }
     }
 
