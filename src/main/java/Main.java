@@ -17,7 +17,7 @@ public class Main {
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
 
         while (true) {
-            reapCompletedJobs();
+            reapCompletedJobs(true);
 
             System.out.print("$ ");
             System.out.flush();
@@ -67,7 +67,7 @@ public class Main {
                     continue;
 
                 case "jobs":
-                    reapCompletedJobs();
+                    reapCompletedJobs(false);
                     printJobs();
                     continue;
 
@@ -168,7 +168,7 @@ public class Main {
         }
     }
 
-    private static void reapCompletedJobs() {
+    private static void reapCompletedJobs(boolean printDoneLines) {
         List<Job> completed = new ArrayList<>();
 
         for (Job job : jobs) {
@@ -177,10 +177,12 @@ public class Main {
             }
         }
 
-        for (Job job : completed) {
-            int idx = jobs.indexOf(job);
-            String marker = markerForIndex(idx, jobs.size());
-            System.out.println("[" + job.id + "] " + marker + " Done " + job.command);
+        if (printDoneLines) {
+            for (Job job : completed) {
+                int idx = jobs.indexOf(job);
+                String marker = markerForIndex(idx, jobs.size());
+                System.out.println("[" + job.id + "] " + marker + " Done " + job.command);
+            }
         }
 
         jobs.removeAll(completed);
@@ -190,7 +192,7 @@ public class Main {
         for (int i = 0; i < jobs.size(); i++) {
             Job job = jobs.get(i);
             String marker = markerForIndex(i, jobs.size());
-            System.out.printf("[%d]%s  %-23s %s &%n", job.id, marker, "Running", job.command);
+            System.out.println("[" + job.id + "]" + marker + " Running " + job.command + " &");
         }
     }
 
